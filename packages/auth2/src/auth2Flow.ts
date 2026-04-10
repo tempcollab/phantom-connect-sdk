@@ -253,8 +253,7 @@ export async function completeAuth2Exchange<P extends string>(options: {
 /**
  * Retrieves the organization and wallet for the current user, handling migration if needed.
  * - Uses the provided stamper to get the associated public key and organization.
- * - Attempts to complete any pending wallet migrations for the organization.
- * - If the Auth2 token includes a wallet, returns it directly.
+ * - When the token includes a wallet, completes pending wallet migrations for the organization and returns that wallet.
  * - Otherwise, gets or creates an application-specific wallet tagged with the clientId.
  */
 export async function _getOrMigrateWallet({
@@ -274,22 +273,22 @@ export async function _getOrMigrateWallet({
   const publicKey = base64urlEncode(bs58.decode(keyInfo.publicKey));
   const { organizationId } = await kms.getOrCreatePhantomOrganization(publicKey);
 
-  const pendingMigrations = await kms.listPendingMigrations(organizationId);
+  // Wallet was selected during the login flow
+  if (auth2Token.wallet) {
+    const pendingMigrations = await kms.listPendingMigrations(organizationId);
 
-  if (pendingMigrations.pendingMigrations) {
-    for (const migration of pendingMigrations.pendingMigrations) {
-      if (migration.migrationId) {
-        try {
-          await kms.completeWalletTransfer({ organizationId, migrationId: migration.migrationId });
-        } catch (error) {
-          console.error(`Failed to complete wallet transfer for migration ${migration.migrationId}:`, error);
+    if (pendingMigrations.pendingMigrations) {
+      for (const migration of pendingMigrations.pendingMigrations) {
+        if (migration.migrationId) {
+          try {
+            await kms.completeWalletTransfer({ organizationId, migrationId: migration.migrationId });
+          } catch (error) {
+            console.error(`Failed to complete wallet transfer for migration ${migration.migrationId}:`, error);
+          }
         }
       }
     }
-  }
 
-  // Wallet was selected during the login flow
-  if (auth2Token.wallet) {
     return {
       organizationId,
       wallet: auth2Token.wallet,

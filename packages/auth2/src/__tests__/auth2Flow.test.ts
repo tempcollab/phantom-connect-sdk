@@ -463,6 +463,14 @@ describe("completeAuth2Exchange()", () => {
     getOrCreateWalletWithTag: jest.fn().mockResolvedValue({ walletId: "wallet-1", tags: [] }),
   };
 
+  /** Access token whose JWT `aud` includes a wallet URN so `Auth2Token.wallet` is set (migration runs only in that case). */
+  const accessTokenWithWalletClaim = makeJwt({
+    sub: "user-1",
+    client_id: "test-client",
+    ext: { a2t: DEFAULT_A2T },
+    aud: ["urn:phantom:wallet:wallet-1:0"],
+  });
+
   beforeEach(() => {
     mockKms.getOrCreatePhantomOrganization.mockResolvedValue({ organizationId: "org-1" });
     mockKms.listPendingMigrations.mockResolvedValue({ pendingMigrations: [] });
@@ -542,7 +550,14 @@ describe("completeAuth2Exchange()", () => {
     expect(mockKms.getOrCreatePhantomOrganization).toHaveBeenCalledWith("encoded-pub-key");
   });
 
-  it("calls kms.listPendingMigrations with organizationId", async () => {
+  it("calls kms.listPendingMigrations with organizationId when the token has a wallet claim", async () => {
+    mockExchangeAuthCode.mockResolvedValueOnce({
+      accessToken: accessTokenWithWalletClaim,
+      idType: "Bearer",
+      expiresInMs: 3_600_000,
+      refreshToken: "refresh-tok",
+    });
+
     await completeAuth2Exchange({
       stamper: makeStamper(),
       kms: mockKms as any,
@@ -638,6 +653,12 @@ describe("completeAuth2Exchange()", () => {
   });
 
   it("calls completeWalletTransfer for each pending migration", async () => {
+    mockExchangeAuthCode.mockResolvedValueOnce({
+      accessToken: accessTokenWithWalletClaim,
+      idType: "Bearer",
+      expiresInMs: 3_600_000,
+      refreshToken: "refresh-tok",
+    });
     mockKms.listPendingMigrations.mockResolvedValueOnce({
       pendingMigrations: [{ migrationId: "migration-1" }, { migrationId: "migration-2" }],
     });
@@ -663,6 +684,12 @@ describe("completeAuth2Exchange()", () => {
   });
 
   it("skips migration entries that have no migrationId", async () => {
+    mockExchangeAuthCode.mockResolvedValueOnce({
+      accessToken: accessTokenWithWalletClaim,
+      idType: "Bearer",
+      expiresInMs: 3_600_000,
+      refreshToken: "refresh-tok",
+    });
     mockKms.listPendingMigrations.mockResolvedValueOnce({
       pendingMigrations: [{ migrationId: "migration-1" }, {}, { migrationId: "migration-3" }],
     });
@@ -688,6 +715,12 @@ describe("completeAuth2Exchange()", () => {
   });
 
   it("does not call completeWalletTransfer when pendingMigrations key is absent", async () => {
+    mockExchangeAuthCode.mockResolvedValueOnce({
+      accessToken: accessTokenWithWalletClaim,
+      idType: "Bearer",
+      expiresInMs: 3_600_000,
+      refreshToken: "refresh-tok",
+    });
     mockKms.listPendingMigrations.mockResolvedValueOnce({});
 
     await completeAuth2Exchange({
@@ -703,6 +736,12 @@ describe("completeAuth2Exchange()", () => {
   });
 
   it("does not call completeWalletTransfer when there are no pending migrations", async () => {
+    mockExchangeAuthCode.mockResolvedValueOnce({
+      accessToken: accessTokenWithWalletClaim,
+      idType: "Bearer",
+      expiresInMs: 3_600_000,
+      refreshToken: "refresh-tok",
+    });
     mockKms.listPendingMigrations.mockResolvedValueOnce({ pendingMigrations: [] });
 
     await completeAuth2Exchange({
@@ -718,6 +757,12 @@ describe("completeAuth2Exchange()", () => {
   });
 
   it("continues and resolves even when a completeWalletTransfer call throws", async () => {
+    mockExchangeAuthCode.mockResolvedValueOnce({
+      accessToken: accessTokenWithWalletClaim,
+      idType: "Bearer",
+      expiresInMs: 3_600_000,
+      refreshToken: "refresh-tok",
+    });
     mockKms.listPendingMigrations.mockResolvedValueOnce({
       pendingMigrations: [{ migrationId: "migration-fail" }, { migrationId: "migration-ok" }],
     });
@@ -875,8 +920,12 @@ describe("_getOrMigrateWallet()", () => {
     expect(mockKms.getOrCreatePhantomOrganization).toHaveBeenCalledWith("encoded-pub-key");
   });
 
-  it("calls listPendingMigrations with organizationId", async () => {
-    await _getOrMigrateWallet({ stamper: makeStamper(), kms: mockKms as any, auth2Token: makeToken() });
+  it("calls listPendingMigrations with organizationId when the token has a wallet claim", async () => {
+    await _getOrMigrateWallet({
+      stamper: makeStamper(),
+      kms: mockKms as any,
+      auth2Token: makeToken({ walletUrn: "urn:phantom:wallet:w:0" }),
+    });
 
     expect(mockKms.listPendingMigrations).toHaveBeenCalledWith("org-1");
   });
@@ -886,7 +935,11 @@ describe("_getOrMigrateWallet()", () => {
       pendingMigrations: [{ migrationId: "m-1" }, { migrationId: "m-2" }],
     });
 
-    await _getOrMigrateWallet({ stamper: makeStamper(), kms: mockKms as any, auth2Token: makeToken() });
+    await _getOrMigrateWallet({
+      stamper: makeStamper(),
+      kms: mockKms as any,
+      auth2Token: makeToken({ walletUrn: "urn:phantom:wallet:wallet-1:0" }),
+    });
 
     expect(mockKms.completeWalletTransfer).toHaveBeenCalledTimes(2);
     expect(mockKms.completeWalletTransfer).toHaveBeenCalledWith({ organizationId: "org-1", migrationId: "m-1" });
@@ -898,7 +951,11 @@ describe("_getOrMigrateWallet()", () => {
       pendingMigrations: [{ migrationId: "m-1" }, {}, { migrationId: "m-3" }],
     });
 
-    await _getOrMigrateWallet({ stamper: makeStamper(), kms: mockKms as any, auth2Token: makeToken() });
+    await _getOrMigrateWallet({
+      stamper: makeStamper(),
+      kms: mockKms as any,
+      auth2Token: makeToken({ walletUrn: "urn:phantom:wallet:wallet-1:0" }),
+    });
 
     expect(mockKms.completeWalletTransfer).toHaveBeenCalledTimes(2);
     expect(mockKms.completeWalletTransfer).not.toHaveBeenCalledWith(
@@ -909,7 +966,11 @@ describe("_getOrMigrateWallet()", () => {
   it("does not call completeWalletTransfer when pendingMigrations key is absent", async () => {
     mockKms.listPendingMigrations.mockResolvedValueOnce({});
 
-    await _getOrMigrateWallet({ stamper: makeStamper(), kms: mockKms as any, auth2Token: makeToken() });
+    await _getOrMigrateWallet({
+      stamper: makeStamper(),
+      kms: mockKms as any,
+      auth2Token: makeToken({ walletUrn: "urn:phantom:wallet:wallet-1:0" }),
+    });
 
     expect(mockKms.completeWalletTransfer).not.toHaveBeenCalled();
   });
@@ -917,7 +978,11 @@ describe("_getOrMigrateWallet()", () => {
   it("does not call completeWalletTransfer when pendingMigrations is empty", async () => {
     mockKms.listPendingMigrations.mockResolvedValueOnce({ pendingMigrations: [] });
 
-    await _getOrMigrateWallet({ stamper: makeStamper(), kms: mockKms as any, auth2Token: makeToken() });
+    await _getOrMigrateWallet({
+      stamper: makeStamper(),
+      kms: mockKms as any,
+      auth2Token: makeToken({ walletUrn: "urn:phantom:wallet:wallet-1:0" }),
+    });
 
     expect(mockKms.completeWalletTransfer).not.toHaveBeenCalled();
   });
@@ -931,7 +996,7 @@ describe("_getOrMigrateWallet()", () => {
     const result = await _getOrMigrateWallet({
       stamper: makeStamper(),
       kms: mockKms as any,
-      auth2Token: makeToken(),
+      auth2Token: makeToken({ walletUrn: "urn:phantom:wallet:wallet-1:0" }),
     });
 
     expect(mockKms.completeWalletTransfer).toHaveBeenCalledTimes(2);
