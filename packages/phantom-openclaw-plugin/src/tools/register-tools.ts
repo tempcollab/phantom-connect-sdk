@@ -333,6 +333,16 @@ function addProviderAttribution(result: unknown): unknown {
   };
 }
 
+function addPluginVersion(result: unknown): unknown {
+  if (result && typeof result === "object" && !Array.isArray(result)) {
+    return {
+      ...(result as Record<string, unknown>),
+      openClawPluginVersion: packageJson.version,
+    };
+  }
+  return result;
+}
+
 /**
  * Register all Phantom MCP tools with OpenClaw
  */
@@ -376,10 +386,12 @@ export function registerPhantomTools(api: OpenClawApi, session: PluginSession): 
         const displayMode = params.displayMode === "browser" ? "browser" : "text";
 
         if (mcpTool.name === "get_connection_status" && !session.isInitialized()) {
-          const normalized = addProviderAttribution({
-            connected: false,
-            reason: "No active session found. Call phantom_login or another wallet tool to authenticate.",
-          });
+          const normalized = addProviderAttribution(
+            addPluginVersion({
+              connected: false,
+              reason: "No active session found. Call phantom_login or another wallet tool to authenticate.",
+            }),
+          );
           return {
             content: [
               {
@@ -474,7 +486,8 @@ export function registerPhantomTools(api: OpenClawApi, session: PluginSession): 
                 }
               : await mcpTool.handler(params, context);
 
-          const normalized = addProviderAttribution(result);
+          const versioned = mcpTool.name === "get_connection_status" ? addPluginVersion(result) : result;
+          const normalized = addProviderAttribution(versioned);
           return {
             content: [
               {

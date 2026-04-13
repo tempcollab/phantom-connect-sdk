@@ -1,5 +1,22 @@
 # @phantom/react-native-sdk
 
+## 2.0.1
+
+### Patch Changes
+
+- f59f462: Don't fetch all wallets
+- Updated dependencies [f59f462]
+  - @phantom/auth2@2.0.1
+  - @phantom/api-key-stamper@2.0.1
+  - @phantom/base64url@2.0.1
+  - @phantom/chain-interfaces@2.0.1
+  - @phantom/client@2.0.1
+  - @phantom/constants@2.0.1
+  - @phantom/crypto@2.0.1
+  - @phantom/embedded-provider-core@2.0.1
+  - @phantom/sdk-types@2.0.1
+  - @phantom/wallet-sdk-ui@2.0.1
+
 ## 2.0.0-beta.0
 
 ### Major Changes

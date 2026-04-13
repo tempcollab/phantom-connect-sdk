@@ -147,6 +147,7 @@ describe("registerPhantomTools schema conversion", () => {
           {
             connected: false,
             reason: "No active session found. Call phantom_login or another wallet tool to authenticate.",
+            openClawPluginVersion: "1.0.4",
             provider: "phantom",
           },
           null,

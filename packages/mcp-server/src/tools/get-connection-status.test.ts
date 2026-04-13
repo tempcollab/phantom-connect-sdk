@@ -18,6 +18,7 @@ describe("get_connection_status", () => {
       connected: true,
       walletId: "wallet-1",
       organizationId: "org-1",
+      mcpServerVersion: "1.0.4",
     });
   });
 
@@ -30,6 +31,7 @@ describe("get_connection_status", () => {
     expect(result).toEqual({
       connected: false,
       reason: "No active session found. Call get_wallet_addresses to authenticate.",
+      mcpServerVersion: "1.0.4",
     });
   });
 });

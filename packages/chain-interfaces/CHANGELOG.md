@@ -1,5 +1,15 @@
 # @phantom/chain-interfaces
 
+## 2.0.1
+
+### Patch Changes
+
+- f59f462: Don't fetch all wallets
+- Updated dependencies [f59f462]
+  - @phantom/constants@2.0.1
+  - @phantom/parsers@2.0.1
+  - @phantom/sdk-types@2.0.1
+
 ## 2.0.0-beta.0
 
 ### Major Changes

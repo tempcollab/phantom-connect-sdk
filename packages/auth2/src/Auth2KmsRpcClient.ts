@@ -2,12 +2,10 @@ import {
   Configuration,
   KMSRPCApi,
   GetOrCreatePhantomOrganizationMethodEnum,
-  GetOrganizationWalletsMethodEnum,
   GetOrCreateWalletWithTagMethodEnum,
   type KmsRpcRequest,
   type KmsRpcResponseV2,
   type ExternalKmsOrganization,
-  type OrganizationWallets,
   type KmsWalletWithDerivedAccounts,
   type DerivationInfoSchema,
 } from "@phantom/openapi-wallet-service";
@@ -16,9 +14,6 @@ import { Buffer } from "buffer";
 import type { Auth2StamperWithKeyManagement } from "./index";
 
 const DEFAULT_KMS_API_VERSION = "2025-11-24";
-
-const ORGANIZATION_WALLETS_LIMIT = 20;
-const ORGANIZATION_WALLETS_OFFSET = 0;
 
 export type Auth2KmsClientOptions = {
   apiBaseUrl: string;
@@ -105,30 +100,6 @@ export class Auth2KmsRpcClient {
       params: args,
       timestampMs: Date.now(),
     } as unknown as KmsRpcRequest);
-  }
-
-  public async getOrganizationWallets(organizationId: string): Promise<OrganizationWallets> {
-    const allWallets: OrganizationWallets["wallets"] = [];
-    let offset = ORGANIZATION_WALLETS_OFFSET;
-    let page: OrganizationWallets;
-
-    do {
-      page = await this.postKmsRpc<OrganizationWallets>({
-        method: GetOrganizationWalletsMethodEnum.getOrganizationWallets,
-        params: { organizationId, limit: ORGANIZATION_WALLETS_LIMIT, offset },
-        timestampMs: Date.now(),
-      } as KmsRpcRequest);
-
-      allWallets.push(...page.wallets);
-      offset += ORGANIZATION_WALLETS_LIMIT;
-    } while (page.wallets.length === ORGANIZATION_WALLETS_LIMIT);
-
-    return {
-      wallets: allWallets,
-      limit: allWallets.length,
-      offset: 0,
-      totalCount: allWallets.length,
-    };
   }
 
   public async getOrCreateWalletWithTag(args: {

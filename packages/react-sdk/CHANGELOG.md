@@ -1,5 +1,16 @@
 # @phantom/react-sdk
 
+## 2.0.1
+
+### Patch Changes
+
+- f59f462: Don't fetch all wallets
+- Updated dependencies [f59f462]
+  - @phantom/browser-sdk@2.0.1
+  - @phantom/chain-interfaces@2.0.1
+  - @phantom/constants@2.0.1
+  - @phantom/wallet-sdk-ui@2.0.1
+
 ## 2.0.0-beta.0
 
 ### Major Changes

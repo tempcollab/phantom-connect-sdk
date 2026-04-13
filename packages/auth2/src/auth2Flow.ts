@@ -324,13 +324,6 @@ export async function _getOrCreateAppWallet({
   organizationId: string;
   clientId: string;
 }): Promise<ExternalKmsWallet> {
-  const { wallets } = await kms.getOrganizationWallets(organizationId);
-
-  const appWallet = wallets.find(wallet => wallet.tags.includes(clientId));
-  if (appWallet) {
-    return appWallet;
-  }
-
   return await kms.getOrCreateWalletWithTag({
     organizationId,
     walletName: "App Wallet",

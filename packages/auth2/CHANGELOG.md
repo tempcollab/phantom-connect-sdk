@@ -1,5 +1,15 @@
 # @phantom/auth2
 
+## 2.0.1
+
+### Patch Changes
+
+- f59f462: Don't fetch all wallets
+- Updated dependencies [f59f462]
+  - @phantom/base64url@2.0.1
+  - @phantom/crypto@2.0.1
+  - @phantom/sdk-types@2.0.1
+
 ## 2.0.0-beta.0
 
 ### Major Changes

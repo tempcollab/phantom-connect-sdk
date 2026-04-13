@@ -76,6 +76,7 @@ function makeStamper(initialized = true): jest.Mocked<Auth2StamperWithKeyManagem
     auth2Token: null,
     setTokens: jest.fn().mockResolvedValue(undefined),
     stamp: jest.fn().mockResolvedValue("stamp"),
+    maybeRefreshTokens: jest.fn().mockResolvedValue(false),
     resetKeyPair: jest.fn(),
     clear: jest.fn(),
     rotateKeyPair: jest.fn(),
@@ -459,7 +460,6 @@ describe("completeAuth2Exchange()", () => {
     getOrCreatePhantomOrganization: jest.fn().mockResolvedValue({ organizationId: "org-1" }),
     listPendingMigrations: jest.fn().mockResolvedValue({ pendingMigrations: [] }),
     completeWalletTransfer: jest.fn().mockResolvedValue(undefined),
-    getOrganizationWallets: jest.fn().mockResolvedValue({ wallets: [] }),
     getOrCreateWalletWithTag: jest.fn().mockResolvedValue({ walletId: "wallet-1", tags: [] }),
   };
 
@@ -475,7 +475,6 @@ describe("completeAuth2Exchange()", () => {
     mockKms.getOrCreatePhantomOrganization.mockResolvedValue({ organizationId: "org-1" });
     mockKms.listPendingMigrations.mockResolvedValue({ pendingMigrations: [] });
     mockKms.completeWalletTransfer.mockResolvedValue(undefined);
-    mockKms.getOrganizationWallets.mockResolvedValue({ wallets: [] });
     mockKms.getOrCreateWalletWithTag.mockResolvedValue({ walletId: "wallet-1", tags: [] });
   });
 
@@ -570,7 +569,7 @@ describe("completeAuth2Exchange()", () => {
     expect(mockKms.listPendingMigrations).toHaveBeenCalledWith("org-1");
   });
 
-  it("calls kms.getOrganizationWallets and kms.getOrCreateWalletWithTag when token has no wallet claim", async () => {
+  it("calls kms.getOrCreateWalletWithTag with [clientId, 'APP'] tag when token has no wallet claim", async () => {
     await completeAuth2Exchange({
       stamper: makeStamper(),
       kms: mockKms as any,
@@ -580,26 +579,7 @@ describe("completeAuth2Exchange()", () => {
       provider: "google",
     });
 
-    expect(mockKms.getOrganizationWallets).toHaveBeenCalledWith("org-1");
-    expect(mockKms.getOrCreateWalletWithTag).toHaveBeenCalled();
-  });
-
-  it("returns existing wallet when a wallet with the clientId tag is found", async () => {
-    mockKms.getOrganizationWallets.mockResolvedValueOnce({
-      wallets: [{ walletId: "wallet-existing", tags: ["test-client"] }],
-    });
-
-    const result = await completeAuth2Exchange({
-      stamper: makeStamper(),
-      kms: mockKms as any,
-      auth2Options: AUTH2_OPTIONS,
-      code: "c",
-      codeVerifier: "v",
-      provider: "google",
-    });
-
-    expect(mockKms.getOrCreateWalletWithTag).not.toHaveBeenCalled();
-    expect(result.walletId).toBe("wallet-existing");
+    expect(mockKms.getOrCreateWalletWithTag).toHaveBeenCalledWith(expect.objectContaining({ tag: "test-client" }));
   });
 
   it("uses wallet ID from the token aud claim and skips kms wallet discovery", async () => {
@@ -623,7 +603,6 @@ describe("completeAuth2Exchange()", () => {
       provider: "google",
     });
 
-    expect(mockKms.getOrganizationWallets).not.toHaveBeenCalled();
     expect(mockKms.getOrCreateWalletWithTag).not.toHaveBeenCalled();
     expect(result.walletId).toBe("wallet-from-token");
   });
@@ -715,12 +694,6 @@ describe("completeAuth2Exchange()", () => {
   });
 
   it("does not call completeWalletTransfer when pendingMigrations key is absent", async () => {
-    mockExchangeAuthCode.mockResolvedValueOnce({
-      accessToken: accessTokenWithWalletClaim,
-      idType: "Bearer",
-      expiresInMs: 3_600_000,
-      refreshToken: "refresh-tok",
-    });
     mockKms.listPendingMigrations.mockResolvedValueOnce({});
 
     await completeAuth2Exchange({
@@ -736,12 +709,6 @@ describe("completeAuth2Exchange()", () => {
   });
 
   it("does not call completeWalletTransfer when there are no pending migrations", async () => {
-    mockExchangeAuthCode.mockResolvedValueOnce({
-      accessToken: accessTokenWithWalletClaim,
-      idType: "Bearer",
-      expiresInMs: 3_600_000,
-      refreshToken: "refresh-tok",
-    });
     mockKms.listPendingMigrations.mockResolvedValueOnce({ pendingMigrations: [] });
 
     await completeAuth2Exchange({
@@ -848,21 +815,6 @@ describe("completeAuth2Exchange()", () => {
     ).rejects.toThrow("Unable to resolve organizationId");
   });
 
-  it("propagates getOrganizationWallets errors", async () => {
-    mockKms.getOrganizationWallets.mockRejectedValueOnce(new Error("Wallets fetch failed"));
-
-    await expect(
-      completeAuth2Exchange({
-        stamper: makeStamper(),
-        kms: mockKms as any,
-        auth2Options: AUTH2_OPTIONS,
-        code: "c",
-        codeVerifier: "v",
-        provider: "google",
-      }),
-    ).rejects.toThrow("Wallets fetch failed");
-  });
-
   it("propagates getOrCreateWalletWithTag errors", async () => {
     mockKms.getOrCreateWalletWithTag.mockRejectedValueOnce(new Error("Wallet creation failed"));
 
@@ -884,7 +836,6 @@ describe("_getOrMigrateWallet()", () => {
     getOrCreatePhantomOrganization: jest.fn().mockResolvedValue({ organizationId: "org-1" }),
     listPendingMigrations: jest.fn().mockResolvedValue({ pendingMigrations: [] }),
     completeWalletTransfer: jest.fn().mockResolvedValue(undefined),
-    getOrganizationWallets: jest.fn().mockResolvedValue({ wallets: [] }),
     getOrCreateWalletWithTag: jest.fn().mockResolvedValue({ walletId: "wallet-1", tags: [] }),
   };
 
@@ -899,7 +850,6 @@ describe("_getOrMigrateWallet()", () => {
     mockKms.getOrCreatePhantomOrganization.mockResolvedValue({ organizationId: "org-1" });
     mockKms.listPendingMigrations.mockResolvedValue({ pendingMigrations: [] });
     mockKms.completeWalletTransfer.mockResolvedValue(undefined);
-    mockKms.getOrganizationWallets.mockResolvedValue({ wallets: [] });
     mockKms.getOrCreateWalletWithTag.mockResolvedValue({ walletId: "wallet-1", tags: [] });
   });
 
@@ -920,11 +870,11 @@ describe("_getOrMigrateWallet()", () => {
     expect(mockKms.getOrCreatePhantomOrganization).toHaveBeenCalledWith("encoded-pub-key");
   });
 
-  it("calls listPendingMigrations with organizationId when the token has a wallet claim", async () => {
+  it("calls listPendingMigrations with organizationId", async () => {
     await _getOrMigrateWallet({
       stamper: makeStamper(),
       kms: mockKms as any,
-      auth2Token: makeToken({ walletUrn: "urn:phantom:wallet:w:0" }),
+      auth2Token: makeToken({ walletUrn: "urn:phantom:wallet:wallet-1:0" }),
     });
 
     expect(mockKms.listPendingMigrations).toHaveBeenCalledWith("org-1");
@@ -966,11 +916,7 @@ describe("_getOrMigrateWallet()", () => {
   it("does not call completeWalletTransfer when pendingMigrations key is absent", async () => {
     mockKms.listPendingMigrations.mockResolvedValueOnce({});
 
-    await _getOrMigrateWallet({
-      stamper: makeStamper(),
-      kms: mockKms as any,
-      auth2Token: makeToken({ walletUrn: "urn:phantom:wallet:wallet-1:0" }),
-    });
+    await _getOrMigrateWallet({ stamper: makeStamper(), kms: mockKms as any, auth2Token: makeToken() });
 
     expect(mockKms.completeWalletTransfer).not.toHaveBeenCalled();
   });
@@ -978,11 +924,7 @@ describe("_getOrMigrateWallet()", () => {
   it("does not call completeWalletTransfer when pendingMigrations is empty", async () => {
     mockKms.listPendingMigrations.mockResolvedValueOnce({ pendingMigrations: [] });
 
-    await _getOrMigrateWallet({
-      stamper: makeStamper(),
-      kms: mockKms as any,
-      auth2Token: makeToken({ walletUrn: "urn:phantom:wallet:wallet-1:0" }),
-    });
+    await _getOrMigrateWallet({ stamper: makeStamper(), kms: mockKms as any, auth2Token: makeToken() });
 
     expect(mockKms.completeWalletTransfer).not.toHaveBeenCalled();
   });
@@ -1011,7 +953,6 @@ describe("_getOrMigrateWallet()", () => {
     });
 
     expect(result.wallet.id).toBe("vault-wallet-id");
-    expect(mockKms.getOrganizationWallets).not.toHaveBeenCalled();
     expect(mockKms.getOrCreateWalletWithTag).not.toHaveBeenCalled();
   });
 
@@ -1065,14 +1006,6 @@ describe("_getOrMigrateWallet()", () => {
     ).rejects.toThrow("org lookup failed");
   });
 
-  it("propagates getOrganizationWallets errors", async () => {
-    mockKms.getOrganizationWallets.mockRejectedValueOnce(new Error("wallets fetch failed"));
-
-    await expect(
-      _getOrMigrateWallet({ stamper: makeStamper(), kms: mockKms as any, auth2Token: makeToken() }),
-    ).rejects.toThrow("wallets fetch failed");
-  });
-
   it("propagates getOrCreateWalletWithTag errors", async () => {
     mockKms.getOrCreateWalletWithTag.mockRejectedValueOnce(new Error("wallet create failed"));
 
@@ -1084,61 +1017,14 @@ describe("_getOrMigrateWallet()", () => {
 
 describe("_getOrCreateAppWallet()", () => {
   const kms = {
-    getOrganizationWallets: jest.fn(),
     getOrCreateWalletWithTag: jest.fn(),
   };
 
   beforeEach(() => {
-    kms.getOrganizationWallets.mockReset();
     kms.getOrCreateWalletWithTag.mockReset();
   });
 
-  it("returns the existing wallet when a wallet with the clientId tag is found", async () => {
-    const existingWallet = { walletId: "wallet-existing", tags: ["other-tag", "my-client-id"] };
-    kms.getOrganizationWallets.mockResolvedValue({ wallets: [existingWallet] });
-
-    const result = await _getOrCreateAppWallet({
-      kms: kms as any,
-      organizationId: "org-abc",
-      clientId: "my-client-id",
-    });
-
-    expect(result).toBe(existingWallet);
-    expect(kms.getOrCreateWalletWithTag).not.toHaveBeenCalled();
-  });
-
-  it("skips wallets whose tags do not include the clientId", async () => {
-    const otherWallet = { walletId: "wallet-other", tags: ["different-tag"] };
-    const newWallet = { walletId: "wallet-new", tags: ["my-client-id"] };
-    kms.getOrganizationWallets.mockResolvedValue({ wallets: [otherWallet] });
-    kms.getOrCreateWalletWithTag.mockResolvedValue(newWallet);
-
-    const result = await _getOrCreateAppWallet({
-      kms: kms as any,
-      organizationId: "org-abc",
-      clientId: "my-client-id",
-    });
-
-    expect(result).toBe(newWallet);
-    expect(kms.getOrCreateWalletWithTag).toHaveBeenCalled();
-  });
-
-  it("creates a wallet when the wallets list is empty", async () => {
-    const newWallet = { walletId: "wallet-created", tags: [] };
-    kms.getOrganizationWallets.mockResolvedValue({ wallets: [] });
-    kms.getOrCreateWalletWithTag.mockResolvedValue(newWallet);
-
-    const result = await _getOrCreateAppWallet({
-      kms: kms as any,
-      organizationId: "org-abc",
-      clientId: "test-client",
-    });
-
-    expect(result).toBe(newWallet);
-  });
-
   it("passes the correct organizationId, walletName, and tag to getOrCreateWalletWithTag", async () => {
-    kms.getOrganizationWallets.mockResolvedValue({ wallets: [] });
     kms.getOrCreateWalletWithTag.mockResolvedValue({ walletId: "w", tags: [] });
 
     await _getOrCreateAppWallet({
@@ -1156,8 +1042,19 @@ describe("_getOrCreateAppWallet()", () => {
     );
   });
 
+  it("uses the provided type in the tag array", async () => {
+    kms.getOrCreateWalletWithTag.mockResolvedValue({ walletId: "w", tags: [] });
+
+    await _getOrCreateAppWallet({
+      kms: kms as any,
+      organizationId: "org-abc",
+      clientId: "my-app",
+    });
+
+    expect(kms.getOrCreateWalletWithTag).toHaveBeenCalledWith(expect.objectContaining({ tag: "my-app" }));
+  });
+
   it("passes 4 derivation accounts covering Solana, Ethereum, BitcoinSegwit, and Sui", async () => {
-    kms.getOrganizationWallets.mockResolvedValue({ wallets: [] });
     kms.getOrCreateWalletWithTag.mockResolvedValue({ walletId: "w", tags: [] });
 
     await _getOrCreateAppWallet({
@@ -1179,7 +1076,6 @@ describe("_getOrCreateAppWallet()", () => {
   });
 
   it("uses mnemonicLength of 24", async () => {
-    kms.getOrganizationWallets.mockResolvedValue({ wallets: [] });
     kms.getOrCreateWalletWithTag.mockResolvedValue({ walletId: "w", tags: [] });
 
     await _getOrCreateAppWallet({
@@ -1192,20 +1088,7 @@ describe("_getOrCreateAppWallet()", () => {
     expect(call.mnemonicLength).toBe(24);
   });
 
-  it("propagates getOrganizationWallets errors", async () => {
-    kms.getOrganizationWallets.mockRejectedValue(new Error("fetch failed"));
-
-    await expect(
-      _getOrCreateAppWallet({
-        kms: kms as any,
-        organizationId: "org-abc",
-        clientId: "my-app",
-      }),
-    ).rejects.toThrow("fetch failed");
-  });
-
   it("propagates getOrCreateWalletWithTag errors", async () => {
-    kms.getOrganizationWallets.mockResolvedValue({ wallets: [] });
     kms.getOrCreateWalletWithTag.mockRejectedValue(new Error("create failed"));
 
     await expect(

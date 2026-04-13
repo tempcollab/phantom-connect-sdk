@@ -1,5 +1,11 @@
 # @phantom/base64url
 
+## 2.0.1
+
+### Patch Changes
+
+- f59f462: Don't fetch all wallets
+
 ## 2.0.0-beta.0
 
 ### Major Changes

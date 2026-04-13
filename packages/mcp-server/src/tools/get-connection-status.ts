@@ -3,6 +3,7 @@
  */
 
 import type { ToolHandler, ToolContext } from "./types.js";
+import * as packageJson from "../../package.json";
 
 export const getConnectionStatusTool: ToolHandler = {
   name: "get_connection_status",
@@ -11,8 +12,8 @@ export const getConnectionStatusTool: ToolHandler = {
     "Use this as a lightweight check before other operations to confirm the user is authenticated. " +
     "Unlike get_wallet_addresses, this does NOT make an API call and cannot trigger re-authentication; " +
     "it simply reports whether a local session exists. " +
-    "Response when connected: {connected: true, walletId: string, organizationId: string}. " +
-    "Response when not connected: {connected: false, reason: string}. " +
+    "Response when connected: {connected: true, walletId: string, organizationId: string, mcpServerVersion: string}. " +
+    "Response when not connected: {connected: false, reason: string, mcpServerVersion: string}. " +
     "If connected is false, call get_wallet_addresses to trigger the Phantom Connect browser sign-in flow. " +
     "If connected is true but subsequent tool calls fail with AUTH_EXPIRED, the server-side session was revoked — " +
     "any tool call will automatically re-trigger authentication.",
@@ -34,6 +35,7 @@ export const getConnectionStatusTool: ToolHandler = {
       return Promise.resolve({
         connected: false,
         reason: "No active session found. Call get_wallet_addresses to authenticate.",
+        mcpServerVersion: packageJson.version,
       });
     }
 
@@ -41,6 +43,7 @@ export const getConnectionStatusTool: ToolHandler = {
       connected: true,
       walletId: session.walletId,
       organizationId: session.organizationId,
+      mcpServerVersion: packageJson.version,
     });
   },
 };

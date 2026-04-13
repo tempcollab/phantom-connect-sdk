@@ -10,7 +10,6 @@ jest.mock("@phantom/openapi-wallet-service", () => ({
   GetOrCreatePhantomOrganizationMethodEnum: {
     getOrCreatePhantomOrganization: "getOrCreatePhantomOrganization",
   },
-  GetOrganizationWalletsMethodEnum: { getOrganizationWallets: "getOrganizationWallets" },
   GetOrCreateWalletWithTagMethodEnum: { getOrCreateWalletWithTag: "getOrCreateWalletWithTag" },
   DerivationInfoCurveEnum: { ed25519: "ed25519", secp256k1: "secp256k1" },
   DerivationInfoAddressFormatEnum: {
@@ -274,116 +273,6 @@ describe("Auth2KmsRpcClient", () => {
       await expect(
         client.completeWalletTransfer({ organizationId: "org-abc", migrationId: "migration-1" }),
       ).rejects.toThrow("KMS RPC error");
-    });
-  });
-
-  describe("getOrganizationWallets", () => {
-    it("returns the OrganizationWallets result", async () => {
-      mockPostKmsRpc.mockResolvedValueOnce({
-        data: { result: { wallets: [{ walletId: "w-1", tags: ["vault"] }] } },
-      });
-      const client = makeClient();
-
-      const result = await client.getOrganizationWallets("org-abc");
-      expect(result.wallets).toHaveLength(1);
-      expect(result.wallets[0].walletId).toBe("w-1");
-    });
-
-    it("passes organizationId, limit=20, and offset=0 in the RPC params", async () => {
-      mockPostKmsRpc.mockResolvedValueOnce({ data: { result: { wallets: [] } } });
-      const client = makeClient();
-
-      await client.getOrganizationWallets("org-abc");
-
-      const request = mockPostKmsRpc.mock.calls[0][0] as {
-        method: string;
-        params: { organizationId: string; limit: number; offset: number };
-      };
-      expect(request.method).toBe("getOrganizationWallets");
-      expect(request.params.organizationId).toBe("org-abc");
-      expect(request.params.limit).toBe(20);
-      expect(request.params.offset).toBe(0);
-    });
-
-    it("returns an empty wallets array when none exist", async () => {
-      mockPostKmsRpc.mockResolvedValueOnce({ data: { result: { wallets: [] } } });
-      const client = makeClient();
-
-      const result = await client.getOrganizationWallets("org-abc");
-      expect(result.wallets).toEqual([]);
-    });
-
-    it("makes a second request when the first page is full (length === limit)", async () => {
-      const fullPage = Array.from({ length: 20 }, (_, i) => ({ walletId: `w-${i}`, tags: [] }));
-      const partialPage = [{ walletId: "w-20", tags: [] }];
-      mockPostKmsRpc
-        .mockResolvedValueOnce({ data: { result: { wallets: fullPage } } })
-        .mockResolvedValueOnce({ data: { result: { wallets: partialPage } } });
-      const client = makeClient();
-
-      const result = await client.getOrganizationWallets("org-abc");
-
-      expect(mockPostKmsRpc).toHaveBeenCalledTimes(2);
-      expect(result.wallets).toHaveLength(21);
-    });
-
-    it("uses offset=0 for the first page and offset=20 for the second", async () => {
-      const fullPage = Array.from({ length: 20 }, (_, i) => ({ walletId: `w-${i}`, tags: [] }));
-      mockPostKmsRpc
-        .mockResolvedValueOnce({ data: { result: { wallets: fullPage } } })
-        .mockResolvedValueOnce({ data: { result: { wallets: [] } } });
-      const client = makeClient();
-
-      await client.getOrganizationWallets("org-abc");
-
-      const firstCall = mockPostKmsRpc.mock.calls[0][0] as { params: { offset: number } };
-      const secondCall = mockPostKmsRpc.mock.calls[1][0] as { params: { offset: number } };
-      expect(firstCall.params.offset).toBe(0);
-      expect(secondCall.params.offset).toBe(20);
-    });
-
-    it("accumulates wallets across multiple full pages", async () => {
-      const page1 = Array.from({ length: 20 }, (_, i) => ({ walletId: `w-${i}`, tags: [] }));
-      const page2 = Array.from({ length: 20 }, (_, i) => ({ walletId: `w-${i + 20}`, tags: [] }));
-      const page3 = [{ walletId: "w-40", tags: ["my-app"] }];
-      mockPostKmsRpc
-        .mockResolvedValueOnce({ data: { result: { wallets: page1 } } })
-        .mockResolvedValueOnce({ data: { result: { wallets: page2 } } })
-        .mockResolvedValueOnce({ data: { result: { wallets: page3 } } });
-      const client = makeClient();
-
-      const result = await client.getOrganizationWallets("org-abc");
-
-      expect(mockPostKmsRpc).toHaveBeenCalledTimes(3);
-      expect(result.wallets).toHaveLength(41);
-      expect(result.wallets[40].walletId).toBe("w-40");
-    });
-
-    it("stops after a page with exactly one fewer wallet than the limit", async () => {
-      const almostFull = Array.from({ length: 19 }, (_, i) => ({ walletId: `w-${i}`, tags: [] }));
-      mockPostKmsRpc.mockResolvedValueOnce({ data: { result: { wallets: almostFull } } });
-      const client = makeClient();
-
-      await client.getOrganizationWallets("org-abc");
-
-      expect(mockPostKmsRpc).toHaveBeenCalledTimes(1);
-    });
-
-    it("throws on KMS-level RPC error", async () => {
-      mockPostKmsRpc.mockResolvedValueOnce({ data: { error: { code: -32001, message: "Forbidden" } } });
-      const client = makeClient();
-
-      await expect(client.getOrganizationWallets("org-abc")).rejects.toThrow("KMS RPC error");
-    });
-
-    it("throws on KMS-level RPC error during a subsequent page fetch", async () => {
-      const fullPage = Array.from({ length: 20 }, (_, i) => ({ walletId: `w-${i}`, tags: [] }));
-      mockPostKmsRpc
-        .mockResolvedValueOnce({ data: { result: { wallets: fullPage } } })
-        .mockResolvedValueOnce({ data: { error: { code: -32001, message: "Forbidden" } } });
-      const client = makeClient();
-
-      await expect(client.getOrganizationWallets("org-abc")).rejects.toThrow("KMS RPC error");
     });
   });
 
