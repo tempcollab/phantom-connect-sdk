@@ -1,5 +1,16 @@
 # @phantom/perps-client
 
+## 1.2.0
+
+### Minor Changes
+
+- ab708eb: Updated to use CLI
+
+### Patch Changes
+
+- Updated dependencies [ab708eb]
+  - @phantom/phantom-api-client@1.2.0
+
 ## 1.0.0-beta.0
 
 ### Major Changes

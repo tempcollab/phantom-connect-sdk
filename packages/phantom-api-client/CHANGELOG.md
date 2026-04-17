@@ -1,5 +1,11 @@
 # @phantom/phantom-api-client
 
+## 1.2.0
+
+### Minor Changes
+
+- ab708eb: Updated to use CLI
+
 ## 1.0.0-beta.0
 
 ### Major Changes
