@@ -132,47 +132,42 @@ export class PerpsApi {
   }
 
   /**
-   * POST /swap/v2/place-order — place a single order (open/close position).
-   * Requires `taker` (user CAIP-19 address) unlike the generic /exchange endpoint.
+   * POST /swap/v2/exchange — place a single order (open/close position).
+   * Uses the maintained exchange proxy endpoint; taker is not required.
    */
   async postPlaceOrder(body: {
     action: HlOrderAction;
     nonce: number;
     signature: SignatureComponents;
-    taker: string;
   }): Promise<HlOrderResponse> {
-    this.logger.info(`postPlaceOrder nonce=${body.nonce} taker=${body.taker}`);
-    return this.post<HlOrderResponse>("/swap/v2/place-order", body);
+    this.logger.info(`postPlaceOrder nonce=${body.nonce}`);
+    return this.post<HlOrderResponse>("/swap/v2/exchange", body);
   }
 
   /**
-   * POST /swap/v2/cancel-order — cancel an open order.
-   * Requires `taker` (user CAIP-19 address) so the backend can identify the user.
+   * POST /swap/v2/exchange — cancel an open order.
+   * Uses the maintained exchange proxy endpoint; taker is not required.
    */
   async postCancelOrder(body: {
     action: HlCancelAction;
     nonce: number;
     signature: SignatureComponents;
-    taker: string;
   }): Promise<HlCancelOrderResponse> {
-    this.logger.info(`postCancelOrder nonce=${body.nonce} taker=${body.taker}`);
-    return this.post<HlCancelOrderResponse>("/swap/v2/cancel-order", body);
+    this.logger.info(`postCancelOrder nonce=${body.nonce}`);
+    return this.post<HlCancelOrderResponse>("/swap/v2/exchange", body);
   }
 
   /**
-   * POST /swap/v2/perp/update-leverage — update leverage for a market.
-   * Requires `taker` (user CAIP-19 address) so the backend can identify the user.
+   * POST /swap/v2/exchange — update leverage for a market.
+   * Uses the maintained exchange proxy endpoint; taker is not required.
    */
   async postUpdateLeverage(body: {
     action: HlUpdateLeverageAction;
     nonce: number;
     signature: SignatureComponents;
-    taker: string;
   }): Promise<HlDefaultResponse> {
-    this.logger.info(
-      `postUpdateLeverage asset=${body.action.asset} leverage=${body.action.leverage} taker=${body.taker}`,
-    );
-    return this.post<HlDefaultResponse>("/swap/v2/perp/update-leverage", body);
+    this.logger.info(`postUpdateLeverage asset=${body.action.asset} leverage=${body.action.leverage}`);
+    return this.post<HlDefaultResponse>("/swap/v2/exchange", body);
   }
 
   async postTransferUsdcSpotPerp(body: {
@@ -181,7 +176,7 @@ export class PerpsApi {
     signature: SignatureComponents;
   }): Promise<HlDefaultResponse> {
     this.logger.info(`postTransferUsdcSpotPerp amount=${body.action.amount} toPerp=${body.action.toPerp}`);
-    return this.post<HlDefaultResponse>("/swap/v2/transfer-usdc-spot-perp", body);
+    return this.post<HlDefaultResponse>("/swap/v2/exchange", body);
   }
 
   async getBridgeInitialize(params: {
@@ -206,10 +201,9 @@ export class PerpsApi {
     action: Record<string, unknown>;
     nonce: number;
     signature: SignatureComponents;
-    taker: string;
   }): Promise<unknown> {
-    this.logger.info(`postSpotSend nonce=${body.nonce} taker=${body.taker}`);
-    return this.post<unknown>("/swap/v2/spot/send", body);
+    this.logger.info(`postSpotSend nonce=${body.nonce}`);
+    return this.post<unknown>("/swap/v2/exchange", body);
   }
 }
 

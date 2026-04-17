@@ -4,11 +4,12 @@
 
 import { Type } from "@sinclair/typebox";
 import type { TSchema } from "@sinclair/typebox";
-import { tools } from "@phantom/mcp-server";
+import { SessionManager, tools } from "@phantom/cli";
 import { PhantomApiClient } from "@phantom/phantom-api-client";
 import type { OpenClawApi } from "../client/types.js";
 import type { PluginSession } from "../session.js";
 import * as packageJson from "../../package.json";
+import type { ToolContext } from "@phantom/cli";
 
 /**
  * Convert MCP tool JSON schema to TypeBox schema
@@ -346,10 +347,12 @@ function addPluginVersion(result: unknown): unknown {
 /**
  * Register all Phantom MCP tools with OpenClaw
  */
-export function registerPhantomTools(api: OpenClawApi, session: PluginSession): void {
+export function registerPhantomTools(api: OpenClawApi, pluginSession: PluginSession): void {
   const apiClient = new PhantomApiClient({
     baseUrl: process.env.PHANTOM_API_BASE_URL ?? "https://api.phantom.app",
   });
+  const manager = new SessionManager();
+  void manager.initialize();
 
   const staticHeaders: Record<string, string> = {
     [ANALYTICS_HEADER_PLATFORM]: "ext-sdk",
@@ -357,7 +360,7 @@ export function registerPhantomTools(api: OpenClawApi, session: PluginSession): 
     [ANALYTICS_HEADER_SDK_VERSION]: process.env.PHANTOM_VERSION ?? packageJson.version ?? "unknown",
   };
   apiClient.setHeaders(staticHeaders);
-  apiClient.setGetHeaders(() => session.getOAuthHeaders());
+  apiClient.setGetHeaders(() => pluginSession.getOAuthHeaders());
 
   if ("registerContext" in api && typeof api.registerContext === "function") {
     api.registerContext({
@@ -385,7 +388,7 @@ export function registerPhantomTools(api: OpenClawApi, session: PluginSession): 
         const logger = createLogger(mcpTool.name);
         const displayMode = params.displayMode === "browser" ? "browser" : "text";
 
-        if (mcpTool.name === "get_connection_status" && !session.isInitialized()) {
+        if (mcpTool.name === "get_connection_status" && !pluginSession.isInitialized()) {
           const normalized = addProviderAttribution(
             addPluginVersion({
               connected: false,
@@ -402,19 +405,18 @@ export function registerPhantomTools(api: OpenClawApi, session: PluginSession): 
           };
         }
 
-        const context = {
-          client: undefined,
-          session: undefined,
+        const context: ToolContext = {
           logger,
           apiClient,
-        } as any;
+          manager,
+        };
 
         try {
           if (mcpTool.name === "phantom_login") {
             if (displayMode === "browser") {
-              await session.resetSession({ openBrowser: true });
+              await pluginSession.resetSession({ openBrowser: true });
             } else {
-              const authState = await session.startTextModeAuthentication();
+              const authState = await pluginSession.startTextModeAuthentication();
               if (authState.status === "pending") {
                 return {
                   content: [
@@ -435,8 +437,8 @@ export function registerPhantomTools(api: OpenClawApi, session: PluginSession): 
               }
             }
           } else {
-            if (!session.isInitialized()) {
-              const authState = await session.startTextModeAuthentication();
+            if (!pluginSession.isInitialized()) {
+              const authState = await pluginSession.startTextModeAuthentication();
               if (authState.status === "pending") {
                 return {
                   content: [
@@ -458,10 +460,10 @@ export function registerPhantomTools(api: OpenClawApi, session: PluginSession): 
               }
             }
 
-            await session.initialize();
+            await pluginSession.initialize();
           }
 
-          const sessionData = session.getSession();
+          const sessionData = pluginSession.getSession();
           const appId =
             process.env.PHANTOM_APP_ID ??
             process.env.PHANTOM_CLIENT_ID ??
@@ -472,9 +474,6 @@ export function registerPhantomTools(api: OpenClawApi, session: PluginSession): 
               "X-App-Id": appId,
             });
           }
-
-          context.client = session.getClient();
-          context.session = sessionData;
 
           const result =
             mcpTool.name === "phantom_login"

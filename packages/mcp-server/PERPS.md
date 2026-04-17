@@ -1,194 +1,228 @@
-# Perps Tools — Phantom MCP Server
+# Perpetuals (Hyperliquid) — @phantom/mcp-server
 
-This document covers the 12 perpetuals trading tools added to the Phantom MCP server. They enable AI agents to interact with Hyperliquid perpetuals via Phantom's backend.
+The Phantom MCP server exposes a full suite of perpetuals tools backed by [Hyperliquid](https://hyperliquid.xyz/). This document covers each tool, its parameters, and common workflows.
 
-## Overview
+## MCP Tool Names
 
-Hyperliquid is a Phantom-integrated perps exchange built on its own chain (Hypercore). All signing uses Arbitrum EIP-712 (chain ID 42161). The Phantom backend (`api.phantom.app/swap/v2/perp/*`) proxies requests to Hyperliquid.
+All perps tools use the `perps_` prefix in the MCP tool registry.
 
-### Account model
-
-Each wallet has two sub-accounts on Hypercore:
-
-- **Spot account** — receives deposits from bridges, holds tokens
-- **Perp account** — USDC collateral used for perpetual positions
-
-Funds flow: External chain → Spot account → Perp account.
-
----
-
-## Tools
-
-### Read-only
-
-#### `get_perp_markets`
-
-Returns all available perpetual markets with current prices, funding rates, open interest, 24h volume, and max leverage.
-
-```json
-{ "walletId": "optional" }
-```
-
-#### `get_perp_account`
-
-Returns perp account balance: `accountValue`, `availableBalance`, `availableToTrade`.
-
-```json
-{ "walletId": "optional", "derivationIndex": 0 }
-```
-
-#### `get_perp_positions`
-
-Returns all open positions with direction, size, entry price, leverage, unrealized PnL, and liquidation price.
-
-```json
-{ "walletId": "optional", "derivationIndex": 0 }
-```
-
-#### `get_perp_orders`
-
-Returns all open orders (limit, take-profit, stop-loss) with ID, type, price, size, and reduce-only flag.
-
-```json
-{ "walletId": "optional", "derivationIndex": 0 }
-```
-
-#### `get_perp_trade_history`
-
-Returns historical trades with price, size, trade value, fee, and closed PnL.
-
-```json
-{ "walletId": "optional", "derivationIndex": 0 }
-```
+| MCP Tool Name            | Description                                                                                 |
+| ------------------------ | ------------------------------------------------------------------------------------------- |
+| `perps_markets`          | List all available perp markets with prices, funding rates, open interest, and max leverage |
+| `perps_account`          | Get your perps account balance (total value, available balance, withdrawable)               |
+| `perps_positions`        | Get your open perpetual positions                                                           |
+| `perps_orders`           | Get your open perpetual orders                                                              |
+| `perps_history`          | Get your perpetual trade history                                                            |
+| `perps_open`             | Open a perpetual position (market or limit)                                                 |
+| `perps_close`            | Close a perpetual position                                                                  |
+| `perps_cancel`           | Cancel a perpetual order                                                                    |
+| `perps_leverage`         | Update the leverage multiplier for a market                                                 |
+| `perps_transfer`         | Transfer USDC from Hyperliquid spot to the perps account                                    |
+| `perps_deposit`          | Bridge tokens from an external chain into Hyperliquid as USDC                               |
+| `perps_withdraw`         | Withdraw USDC from the perps account back to spot                                           |
+| `perps_withdraw-hl-spot` | Withdraw from the Hyperliquid spot account to an external chain                             |
 
 ---
 
-### Write
+## Tool Reference
 
-#### `deposit_to_hyperliquid` ⭐ Full deposit flow
+### `perps_markets`
 
-Bridges tokens from an external chain into the Hyperliquid perps account in one call.
+Returns all available perpetual markets on Hyperliquid with current prices, funding rates, open interest, 24h volume, max leverage, and asset IDs. Use this to discover tradeable markets and get current prices before opening positions.
 
-**This is the entry point for funding a perps account.** Handles the full flow:
-
-1. Gets deposit address from Phantom backend
-2. Builds and sends source-chain transfer (Solana SOL or EVM USDC)
-3. Polls bridge operations until confirmed (~1-5 min)
-4. Sells bridged token to USDC on Hyperliquid spot (if needed)
-5. Transfers USDC from spot → perp
-
-```json
-{
-  "sourceChainId": "eip155:42161",
-  "amount": "100",
-  "tokenAddress": "optional — ERC-20/SPL; omit for native SOL or default USDC",
-  "walletId": "optional",
-  "derivationIndex": 0
-}
-```
-
-Supported source chains and default tokens:
-
-| `sourceChainId`           | Default token       |
-| ------------------------- | ------------------- |
-| `solana:mainnet`          | Native SOL          |
-| `eip155:42161` (Arbitrum) | USDC (`0xaf88d...`) |
-| `eip155:8453` (Base)      | USDC (`0x83358...`) |
-| `eip155:1` (Ethereum)     | USDC (`0xa0b86...`) |
-| `eip155:137` (Polygon)    | USDC (`0x3c499...`) |
-
-Returns:
-
-```json
-{
-  "sourceChain": "eip155:42161",
-  "sourceTxHash": "0x...",
-  "bridgedToken": "USDC",
-  "destinationAmount": "100.00",
-  "usdcDepositedToPerp": "100.00",
-  "transferResult": { "status": "ok" }
-}
-```
-
-#### `transfer_spot_to_perps`
-
-Moves USDC **within Hypercore** from the spot account to the perp account. Use this when USDC is already on Hyperliquid (e.g. after a manual bridge). Does NOT bridge from external chains.
-
-```json
-{ "amountUsdc": "100", "walletId": "optional", "derivationIndex": 0 }
-```
-
-#### `open_perp_position`
-
-Opens a perpetual position. Market orders use 10% slippage (IOC). Limit orders rest on the book (GTC).
-
-```json
-{
-  "market": "BTC",
-  "direction": "long",
-  "sizeUsd": "500",
-  "leverage": 10,
-  "orderType": "market",
-  "limitPrice": "49000",
-  "reduceOnly": false,
-  "walletId": "optional"
-}
-```
-
-#### `close_perp_position`
-
-Closes an open position using a market IOC order. Defaults to 100% close.
-
-```json
-{ "market": "BTC", "sizePercent": 50, "walletId": "optional" }
-```
-
-#### `cancel_perp_order`
-
-Cancels an open order by ID. Use `get_perp_orders` to get order IDs.
-
-```json
-{ "market": "BTC", "orderId": 12345, "walletId": "optional" }
-```
-
-#### `update_perp_leverage`
-
-Updates leverage and margin type for a market. Takes effect for new orders.
-
-```json
-{ "market": "BTC", "leverage": 5, "marginType": "cross", "walletId": "optional" }
-```
-
-#### `withdraw_from_perps`
-
-Moves USDC from the perp account back to the Hyperliquid spot account. Only withdrawable balance can be withdrawn.
-
-```json
-{ "amountUsdc": "50", "walletId": "optional", "derivationIndex": 0 }
-```
+**Parameters:** none required
 
 ---
 
-## Typical Agent Workflow
+### `perps_account`
 
-```
-1. get_perp_markets           → find BTC market, check price
-2. get_token_balances         → verify USDC balance on Arbitrum
-3. deposit_to_hyperliquid     → bridge 500 USDC from Arbitrum
-4. get_perp_account           → confirm 500 USDC in perp account
-5. open_perp_position         → 500 USD long BTC at 10x leverage
-6. get_perp_positions         → monitor position
-7. close_perp_position        → close when done
-8. withdraw_from_perps        → move USDC back to spot
-```
+Returns the perpetuals account balance including total account value, available balance, and withdrawable amount. The account is funded with USDC on Hyperliquid.
+
+**Parameters:**
+
+- `walletId` (optional) — wallet ID, defaults to authenticated wallet
+- `derivationIndex` (optional) — derivation index, default 0
 
 ---
 
-## Implementation Notes
+### `perps_positions`
 
-- All write tools sign using the wallet's EVM key via `PhantomClient.ethereumSignTypedData()` with `networkId: "eip155:42161"` (Arbitrum)
-- The `PerpsClient` class in `@phantom/perps-client` handles all Hyperliquid-specific logic; MCP tools are thin wrappers
-- `createPerpsClient(context, walletId, derivationIndex)` in `utils/perps.ts` derives the EVM address and binds the signing function
-- Bridge polling uses 2-second intervals with a 10-minute timeout
-- Spot sells use 2% slippage (mirrors wallet2's `BUY_SELL_PRICE_MULTIPLIER = 0.98`)
-- USDC transfers to perp apply a 0.1% safety buffer (`× 0.999`) to account for rounding
+Returns your open perpetual positions including entry price, mark price, unrealized PnL, and margin used.
+
+**Parameters:**
+
+- `walletId` (optional)
+- `derivationIndex` (optional)
+
+---
+
+### `perps_orders`
+
+Returns your open perpetual orders (resting limit orders waiting to be filled).
+
+**Parameters:**
+
+- `walletId` (optional)
+- `derivationIndex` (optional)
+
+---
+
+### `perps_history`
+
+Returns your perpetual trade history (filled orders).
+
+**Parameters:**
+
+- `walletId` (optional)
+- `derivationIndex` (optional)
+
+---
+
+### `perps_open`
+
+Opens a perpetual position on Hyperliquid. Supports market and limit orders in long or short direction. The position size is specified in USD.
+
+**Parameters:**
+
+- `market` — market symbol, e.g. `"BTC"`, `"ETH"`, `"SOL"`
+- `direction` — `"long"` or `"short"`
+- `sizeUsd` — position size in USD (e.g. `100` for $100 notional)
+- `leverage` — leverage multiplier (e.g. `1` for 1x, `10` for 10x)
+- `orderType` — `"market"` or `"limit"`
+- `limitPrice` (required for limit orders) — the limit price
+- `marginType` — `"isolated"` (default) or `"cross"`
+- `reduceOnly` (optional) — if true, can only reduce an existing position
+- `walletId` (optional)
+- `derivationIndex` (optional)
+
+**Notes:**
+
+- Use `perps_markets` first to verify the market symbol and current price.
+- Market orders apply a 10% slippage buffer automatically.
+- Requires USDC in the perps account. Use `perps_deposit` then `perps_transfer` if needed.
+
+---
+
+### `perps_close`
+
+Closes an open perpetual position. Submits a market order in the opposite direction to fully close the position.
+
+**Parameters:**
+
+- `market` — market symbol of the position to close
+- `walletId` (optional)
+- `derivationIndex` (optional)
+
+---
+
+### `perps_cancel`
+
+Cancels an open perpetual order by order ID.
+
+**Parameters:**
+
+- `orderId` — the order ID to cancel
+- `market` — market symbol of the order
+- `walletId` (optional)
+- `derivationIndex` (optional)
+
+---
+
+### `perps_leverage`
+
+Updates the leverage multiplier for a market without changing any positions.
+
+**Parameters:**
+
+- `market` — market symbol
+- `leverage` — new leverage multiplier
+- `marginType` — `"isolated"` or `"cross"`
+- `walletId` (optional)
+- `derivationIndex` (optional)
+
+---
+
+### `perps_transfer`
+
+Moves USDC from the Hyperliquid spot account into the perpetuals account. This is an internal Hyperliquid transfer — both accounts live on Hypercore (Hyperliquid's chain).
+
+**Parameters:**
+
+- `amountUsdc` — amount of USDC to transfer (e.g. `"100"`)
+- `walletId` (optional)
+- `derivationIndex` (optional)
+
+**Note:** USDC must already be in your Hyperliquid spot account. Use `perps_deposit` to bridge tokens from external chains first.
+
+---
+
+### `perps_deposit`
+
+Bridges tokens from an external chain (Solana, Arbitrum, Base, Ethereum, Polygon) into Hyperliquid as USDC via a cross-chain swap. USDC is delivered to your Hyperliquid spot account. Call `perps_transfer` afterwards to move it into the perp account.
+
+**Parameters:**
+
+- `sourceChainId` — CAIP-2 source chain ID (e.g. `"solana:mainnet"`, `"eip155:42161"` for Arbitrum, `"eip155:8453"` for Base)
+- `amount` — amount to send in human-readable units (e.g. `"100"` for 100 USDC)
+- `sellTokenMint` (optional) — token to sell on source chain; defaults to USDC on source chain
+- `sellTokenIsNative` (optional) — set `true` to sell native SOL or ETH
+- `execute` — `false` (default) to preview quote only; `true` to sign and broadcast
+
+---
+
+### `perps_withdraw`
+
+Transfers USDC from the perpetuals account back to the Hyperliquid spot wallet. Only the withdrawable balance can be withdrawn.
+
+**Parameters:**
+
+- `amountUsdc` — amount of USDC to withdraw (e.g. `"50"`)
+- `walletId` (optional)
+- `derivationIndex` (optional)
+
+**Note:** Use `perps_account` to check the withdrawable balance before withdrawing.
+
+---
+
+### `perps_withdraw-hl-spot`
+
+Withdraws USDC from the Hyperliquid spot account to an external destination (e.g. back to Solana or an EVM chain).
+
+**Parameters:**
+
+- `amountUsdc` — amount of USDC to withdraw
+- `destinationChainId` (optional) — CAIP-2 destination chain ID
+- `walletId` (optional)
+- `derivationIndex` (optional)
+
+---
+
+## Common Workflows
+
+### Fund and open a position
+
+```
+1. perps_deposit   — bridge USDC from Solana/Arbitrum/Base to Hyperliquid spot
+2. perps_transfer  — move USDC from Hyperliquid spot → perps account
+3. perps_markets   — check the market symbol and current price
+4. perps_open      — open a long or short position
+5. perps_positions — verify the position was opened
+```
+
+### Close and withdraw
+
+```
+1. perps_positions  — find the open position
+2. perps_close      — close the position
+3. perps_account    — check withdrawable balance
+4. perps_withdraw   — move USDC back to Hyperliquid spot
+5. perps_withdraw-hl-spot  — withdraw from spot to external chain (optional)
+```
+
+### Manage a limit order
+
+```
+1. perps_open    — open with orderType: "limit"
+2. perps_orders  — verify the order is resting on the book
+3. perps_cancel  — cancel the order if needed
+```

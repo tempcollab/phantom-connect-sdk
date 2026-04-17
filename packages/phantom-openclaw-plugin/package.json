@@ -46,7 +46,7 @@
     "typescript": "^5.0.4"
   },
   "dependencies": {
-    "@phantom/mcp-server": "workspace:^",
+    "@phantom/cli": "workspace:^",
     "@phantom/phantom-api-client": "workspace:^",
     "@sinclair/typebox": "^0.32.0"
   },

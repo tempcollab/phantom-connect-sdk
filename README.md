@@ -30,9 +30,9 @@ import {
 // App wrapper with provider and theme configuration
 <PhantomProvider
   config={{
-    providers: ["google", "apple", "phantom", "injected"], // Allowed auth providers
+    providers: ["google", "apple", "injected"], // Allowed auth providers
     addressTypes: [AddressType.solana, AddressType.ethereum],
-    appId: "your-app-id", // Required when using embedded providers (google, apple, phantom, etc.)
+    appId: "your-app-id", // Required when using embedded providers (google, apple, etc.)
     // Optional:
     // apiBaseUrl: "https://api.phantom.app/v1/wallets",
   }}
@@ -193,7 +193,7 @@ Thin wrapper over `@phantom/browser-sdk` that provides React hooks, context prov
 
 - React hooks: `usePhantom`, `useConnect`, `useDisconnect`, `useSolana`, `useEthereum`
 - `ConnectButton` component - Ready-to-use button that handles the complete connection flow
-- Built-in connection modal with authentication providers (Google, Apple, Phantom Login, Browser Extension)
+- Built-in connection modal with authentication providers (Google, Apple, Browser Extension)
 - Theme system with `darkTheme` and `lightTheme` presets
 - Automatic mobile deeplink support for Phantom mobile app
 

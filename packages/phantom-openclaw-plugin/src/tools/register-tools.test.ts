@@ -16,6 +16,21 @@ jest.mock("@phantom/phantom-api-client", () => ({
   })),
 }));
 
+jest.mock("@phantom/cli", () => {
+  // eslint-disable-next-line @typescript-eslint/consistent-type-imports
+  const actual = jest.requireActual<typeof import("@phantom/cli")>("@phantom/cli");
+  return {
+    ...actual,
+    SessionManager: jest.fn().mockImplementation(() => ({
+      initialize: jest.fn().mockResolvedValue(undefined),
+      getSession: jest.fn().mockReturnValue({ walletId: "wallet-1", organizationId: "org-1" }),
+      getClient: jest.fn(),
+      isInitialized: jest.fn().mockReturnValue(false),
+      resetSession: jest.fn().mockResolvedValue(undefined),
+    })),
+  };
+});
+
 beforeEach(() => {
   mockSetHeaders.mockReset();
   mockSetGetHeaders.mockReset();

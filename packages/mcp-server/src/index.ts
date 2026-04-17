@@ -1,14 +1,23 @@
-// Library entry point — re-exports public API only.
-// For the CLI / MCP server entry point see cli.ts.
+/**
+ * @phantom/mcp-server — Phantom CLI exposed as an MCP stdio server.
+ *
+ * This package re-exports the CLI instance from @phantom/cli and provides
+ * a `serve` helper that starts it in `--mcp` mode.
+ *
+ * Usage:
+ *   # Register with your agent (e.g. Claude Code):
+ *   phantom-mcp mcp add
+ *
+ *   # Start MCP server manually:
+ *   phantom-mcp --mcp
+ */
+export { cli } from "@phantom/cli";
 
-// Export SessionManager and types for external usage
-export { SessionManager } from "./session/manager.js";
-export type { SessionData } from "./session/types.js";
-export type { DeviceCodeAuthDisplayOptions } from "./auth/DeviceCodeAuthProvider.js";
-
-// Export tools for external usage
-export { tools } from "./tools/index.js";
-export type { ToolHandler, ToolContext } from "./tools/types.js";
-
-// Re-export PhantomClient type for convenience
-export type { PhantomClient } from "@phantom/client";
+/**
+ * Start the Phantom CLI as an MCP stdio server.
+ * Equivalent to running `phantom --mcp` from the terminal.
+ */
+export async function serve(): Promise<void> {
+  const { cli } = await import("@phantom/cli");
+  await cli.serve(["--mcp"]);
+}

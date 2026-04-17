@@ -5,7 +5,8 @@ module.exports = {
   collectCoverageFrom: ["src/**/*.ts", "!src/**/*.d.ts", "!src/**/*.test.ts"],
   modulePathIgnorePatterns: ["<rootDir>/_release/"],
   moduleNameMapper: {
-    "^@phantom/mcp-server$": "<rootDir>/../mcp-server/src/tools/index.ts",
+    "^incur$": "<rootDir>/../cli/src/__mocks__/incur.ts",
+    "^@phantom/cli$": "<rootDir>/../cli/src/index.ts",
     "^@phantom/constants$": "<rootDir>/../constants/src/index.ts",
     "^(\\.{1,2}/.*)\\.js$": "$1",
   },

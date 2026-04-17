@@ -455,11 +455,13 @@ Moves USDC **within Hypercore** from the spot account to the perp account. Use w
 
 ##### `withdraw_from_perps`
 
-Moves USDC from the perp account back to the Hyperliquid spot account.
+Bridges USDC from the Hyperliquid perp account to an external chain (Solana, Base, Ethereum, Arbitrum, Polygon).
 
 **Parameters:**
 
 - `amountUsdc` (string, required): Amount of USDC to withdraw
+- `destinationChainId` (string, required): Destination chain CAIP-2 ID (e.g. `"solana:mainnet"`, `"eip155:8453"`)
+- `buyToken` (string, optional): CAIP-19 token to receive; defaults to USDC on the destination chain
 - `walletId` (string, optional), `derivationIndex` (number, optional, default 0)
 
 #### Typical Agent Workflow
@@ -467,12 +469,13 @@ Moves USDC from the perp account back to the Hyperliquid spot account.
 ```text
 1. get_perp_markets          → find market, check price
 2. get_token_balances        → verify USDC balance on source chain
-3. deposit_to_hyperliquid    → swap to USDC and deposit to perp account
-4. get_perp_account          → confirm balance in perp account
-5. open_perp_position        → open long at 10x leverage
-6. get_perp_positions        → monitor position
-7. close_perp_position       → close when done
-8. withdraw_from_perps       → move USDC back to spot
+3. deposit_to_hyperliquid    → bridge to Hyperliquid spot
+4. transfer_spot_to_perps    → move USDC from spot into perp account
+5. get_perp_account          → confirm balance in perp account
+6. open_perp_position        → open long at 10x leverage
+7. get_perp_positions        → monitor position
+8. close_perp_position       → close when done
+9. withdraw_from_perps       → bridge USDC back to Solana (or any chain)
 ```
 
 ---

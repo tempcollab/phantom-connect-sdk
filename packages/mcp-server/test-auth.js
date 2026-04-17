@@ -24,7 +24,7 @@
  *   PHANTOM_CALLBACK_PORT  # Custom callback port (default: 8080)
  */
 
-const { SessionManager } = require("./dist/index.js");
+const { SessionManager } = require("@phantom/cli");
 
 async function testAuthFlow() {
   console.error("\n=== Phantom MCP Server - Auth Flow Test ===\n");

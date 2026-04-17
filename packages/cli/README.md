@@ -1,0 +1,144 @@
+# @phantom/cli
+
+Phantom CLI — sign transactions, transfer tokens, and swap on Solana and Ethereum. Powered by Phantom.
+
+## Installation
+
+```bash
+npm install -g @phantom/cli
+```
+
+This installs the `phantom` binary.
+
+## Usage
+
+```bash
+phantom --help
+```
+
+### MCP Server mode
+
+Run as an MCP stdio server (for use with AI agents):
+
+```bash
+phantom --mcp
+```
+
+Or use the dedicated `@phantom/mcp-server` package which wraps this in a standalone binary.
+
+### Register with your agent
+
+```bash
+phantom mcp add
+```
+
+## Commands
+
+### Authentication
+
+```bash
+phantom login
+```
+
+Authenticate with Phantom. Use this to log in for the first time, switch accounts, or refresh an expired session.
+
+### Wallet
+
+```bash
+phantom wallet status      # Check connection status (no API call)
+phantom wallet addresses   # Get all wallet addresses
+phantom wallet balances    # Get token balances
+phantom wallet rebalance   # Rebalance portfolio to a target allocation
+```
+
+### Solana
+
+```bash
+phantom solana send   # Send a signed Solana transaction
+phantom solana sign   # Sign a Solana message
+```
+
+### EVM
+
+```bash
+phantom evm send         # Send a signed EVM transaction
+phantom evm sign         # Sign an EVM personal message
+phantom evm sign-typed   # Sign EVM typed data (EIP-712)
+phantom evm allowance    # Get ERC-20 token allowance for a spender
+```
+
+### Tokens & Swaps
+
+```bash
+phantom transfer   # Transfer tokens between wallets
+phantom buy        # Buy a token with another token (swap)
+phantom simulate   # Simulate a transaction before executing
+phantom pay        # Pay for API access using tokens
+```
+
+### Perpetuals (Hyperliquid)
+
+See [PERPS.md](./PERPS.md) for full perpetuals documentation.
+
+```bash
+phantom perps markets          # List available markets
+phantom perps account          # Get account summary
+phantom perps positions        # Get open positions
+phantom perps orders           # Get open orders
+phantom perps history          # Get trade history
+phantom perps open             # Open a position
+phantom perps close            # Close a position
+phantom perps cancel           # Cancel an order
+phantom perps leverage         # Update leverage
+phantom perps transfer         # Transfer spot → perps
+phantom perps deposit          # Bridge tokens into Hyperliquid
+phantom perps withdraw         # Bridge USDC from perps to external chain
+```
+
+## MCP Tools
+
+When running as an MCP server (`phantom --mcp`), all commands are exposed as MCP tools. Tool names follow the pattern `<group>_<command>` (e.g. `wallet_status`, `perps_markets`). Top-level commands use their command name directly (e.g. `login`, `buy`, `transfer`).
+
+| Tool               | Description                              |
+| ------------------ | ---------------------------------------- |
+| `login`            | Authenticate with Phantom                |
+| `wallet_status`    | Check connection status                  |
+| `wallet_addresses` | Get wallet addresses                     |
+| `wallet_balances`  | Get token balances                       |
+| `wallet_rebalance` | Rebalance portfolio                      |
+| `solana_send`      | Send a Solana transaction                |
+| `solana_sign`      | Sign a Solana message                    |
+| `evm_send`         | Send an EVM transaction                  |
+| `evm_sign`         | Sign an EVM personal message             |
+| `evm_sign-typed`   | Sign EVM typed data                      |
+| `evm_allowance`    | Get ERC-20 allowance                     |
+| `transfer`         | Transfer tokens                          |
+| `buy`              | Buy/swap tokens                          |
+| `simulate`         | Simulate a transaction                   |
+| `pay`              | Pay for API access                       |
+| `perps_markets`    | List perp markets                        |
+| `perps_account`    | Get perps account                        |
+| `perps_positions`  | Get open positions                       |
+| `perps_orders`     | Get open orders                          |
+| `perps_history`    | Get trade history                        |
+| `perps_open`       | Open a position                          |
+| `perps_close`      | Close a position                         |
+| `perps_cancel`     | Cancel an order                          |
+| `perps_leverage`   | Update leverage                          |
+| `perps_transfer`   | Transfer spot → perps                    |
+| `perps_deposit`    | Bridge tokens to Hyperliquid             |
+| `perps_withdraw`   | Bridge USDC from perps to external chain |
+
+## Configuration
+
+| Variable               | Description                                                            |
+| ---------------------- | ---------------------------------------------------------------------- |
+| `PHANTOM_API_BASE_URL` | Override the Phantom API base URL (default: `https://api.phantom.app`) |
+
+## Authentication
+
+On first use, the CLI will prompt you to authenticate via browser. Sessions are persisted locally and refreshed automatically.
+
+## Requirements
+
+- Node.js 18+

@@ -1,10 +1,10 @@
 /**
  * Session management for Phantom OpenClaw plugin
- * Wraps the SessionManager from @phantom/mcp-server
+ * Wraps the SessionManager from @phantom/cli
  */
 
-import { SessionManager } from "@phantom/mcp-server";
-import type { PhantomClient, SessionData, DeviceCodeAuthDisplayOptions } from "@phantom/mcp-server";
+import { SessionManager } from "@phantom/cli";
+import type { PhantomClient, SessionData, DeviceCodeAuthDisplayOptions } from "@phantom/cli";
 
 /**
  * Configuration options for PluginSession

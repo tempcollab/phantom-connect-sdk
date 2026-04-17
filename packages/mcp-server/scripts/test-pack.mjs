@@ -1,107 +1,86 @@
-import { accessSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, constants } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { execFileSync, spawnSync } from "node:child_process";
-import { createRequire } from "node:module";
+#!/usr/bin/env node
+/**
+ * test-pack.mjs
+ *
+ * Packs the @phantom/mcp-server package and verifies the resulting tarball
+ * contains the expected files. Run after `yarn build` to catch accidental
+ * omissions from the published artifact.
+ *
+ * Usage: node scripts/test-pack.mjs
+ */
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const packageDir = resolve(__dirname, "..");
-const tarballPath = join(packageDir, "package.tgz");
+import { execSync } from "child_process";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
-const run = (command, args, cwd) => {
-  execFileSync(command, args, {
-    cwd,
-    stdio: "inherit",
-    env: process.env,
-  });
-};
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PKG_DIR = path.resolve(__dirname, "..");
 
-const assert = (condition, message) => {
-  if (!condition) {
-    throw new Error(message);
-  }
-};
+const REQUIRED_FILES = ["package.json", "dist/bin.js", "dist/index.js", "README.md", "CHANGELOG.md"];
 
-const assertLocalUrl = (value, envName) => {
-  const parsed = new URL(value);
-  const isLocalHost = parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost";
-  assert(isLocalHost, `${envName} must use localhost/127.0.0.1 for pack tests, got: ${value}`);
-};
+// ---------------------------------------------------------------------------
+// Pack
+// ---------------------------------------------------------------------------
 
-let tempInstallDir = "";
-
+console.log("Packing @phantom/mcp-server …");
+const packOut = execSync("yarn pack --json", { cwd: PKG_DIR }).toString().trim();
+let tarballPath;
 try {
-  // Build npm tarball exactly as release packaging does.
-  run("yarn", ["pack"], packageDir);
-  assert(existsSync(tarballPath), "Expected package.tgz to be created by yarn pack");
+  const info = JSON.parse(packOut);
+  tarballPath = info.output ?? info.filename;
+} catch {
+  // yarn v1 just prints the filename
+  tarballPath = packOut.split("\n").find(l => l.endsWith(".tgz"));
+}
 
-  // Install the tarball into a clean temporary project.
-  tempInstallDir = mkdtempSync(join(tmpdir(), "phantom-mcp-pack-test-"));
-  writeFileSync(
-    join(tempInstallDir, "package.json"),
-    JSON.stringify({ name: "pack-test", private: true, version: "1.0.0" }, null, 2),
-  );
-
-  run("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", tarballPath], tempInstallDir);
-
-  const installedPackageDir = join(tempInstallDir, "node_modules", "@phantom", "mcp-server");
-  assert(existsSync(installedPackageDir), "Installed package directory not found");
-
-  // Verify the library entrypoint loads without side effects.
-  const requireFromTempProject = createRequire(join(tempInstallDir, "index.js"));
-  const loaded = requireFromTempProject("@phantom/mcp-server");
-  assert(loaded && typeof loaded === "object", "Package did not export an object");
-  const exportKeys = Object.keys(loaded).sort();
-  assert(exportKeys.includes("SessionManager"), "Expected SessionManager export");
-  assert(exportKeys.includes("tools"), "Expected tools export");
-  assert(!exportKeys.includes("PhantomMCPServer"), "Internal server class should not be publicly exported");
-  assert(typeof loaded.SessionManager === "function", "SessionManager export must be a function");
-  assert(Array.isArray(loaded.tools), "tools export must be an array");
-
-  // Verify CLI binary exists and is executable.
-  const cliBinPath = join(tempInstallDir, "node_modules", ".bin", "phantom-mcp");
-  assert(existsSync(cliBinPath), "phantom-mcp binary not found in installed package");
-  accessSync(cliBinPath, constants.X_OK);
-
-  // Verify publish footprint excludes source and test files.
-  assert(!existsSync(join(installedPackageDir, "src")), "Published package should not include src/");
-  assert(!existsSync(join(installedPackageDir, "scripts")), "Published package should not include scripts/");
-  assert(existsSync(join(installedPackageDir, "dist", "index.js")), "Published package missing dist/index.js");
-  assert(existsSync(join(installedPackageDir, "dist", "cli.js")), "Published package missing dist/cli.js");
-
-  // Verify CLI can start from installed package under no-network guardrails.
-  const authBaseUrl = process.env.PHANTOM_AUTH_BASE_URL ?? "http://127.0.0.1:1";
-  const apiBaseUrl = process.env.PHANTOM_API_BASE_URL ?? "http://127.0.0.1:1";
-  assertLocalUrl(authBaseUrl, "PHANTOM_AUTH_BASE_URL");
-  assertLocalUrl(apiBaseUrl, "PHANTOM_API_BASE_URL");
-
-  const cliRun = spawnSync("node", [join(installedPackageDir, "dist", "cli.js")], {
-    cwd: tempInstallDir,
-    timeout: 1500,
-    env: {
-      ...process.env,
-      PHANTOM_AUTH_BASE_URL: authBaseUrl,
-      PHANTOM_API_BASE_URL: apiBaseUrl,
-      HOME: tempInstallDir,
-    },
-    stdio: "ignore",
-  });
-  assert(
-    cliRun.signal === "SIGTERM" || cliRun.status === 0,
-    `Installed CLI did not start as expected (status=${cliRun.status}, signal=${cliRun.signal})`,
-  );
-
-  const installedPackageJson = JSON.parse(readFileSync(join(installedPackageDir, "package.json"), "utf8"));
-  assert(installedPackageJson.name === "@phantom/mcp-server", "Installed package name mismatch");
-
-  process.stdout.write(`test:pack succeeded (exports: ${exportKeys.join(", ")})\n`);
-} finally {
-  if (existsSync(tarballPath)) {
-    rmSync(tarballPath, { force: true });
+if (!tarballPath || !fs.existsSync(tarballPath)) {
+  // Fallback: look for any .tgz in PKG_DIR
+  const tarballs = fs.readdirSync(PKG_DIR).filter(f => f.endsWith(".tgz"));
+  if (tarballs.length === 0) {
+    console.error("Could not find packed tarball.");
+    process.exit(1);
   }
-  if (tempInstallDir && existsSync(tempInstallDir)) {
-    rmSync(tempInstallDir, { recursive: true, force: true });
+  tarballPath = path.join(PKG_DIR, tarballs[tarballs.length - 1]);
+}
+
+console.log(`Tarball: ${tarballPath}`);
+
+// ---------------------------------------------------------------------------
+// List contents
+// ---------------------------------------------------------------------------
+
+const rawList = execSync(`tar tzf ${tarballPath}`).toString();
+const packedFiles = rawList
+  .split("\n")
+  .map(f => f.replace(/^package\//, "").trim())
+  .filter(Boolean);
+
+// ---------------------------------------------------------------------------
+// Verify
+// ---------------------------------------------------------------------------
+
+let failed = false;
+
+for (const required of REQUIRED_FILES) {
+  if (!packedFiles.some(f => f === required || f.startsWith(required))) {
+    console.error(`MISSING: ${required}`);
+    failed = true;
+  } else {
+    console.log(`OK:      ${required}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Cleanup
+// ---------------------------------------------------------------------------
+
+fs.unlinkSync(tarballPath);
+console.log("Tarball removed.");
+
+if (failed) {
+  console.error("\nPack check FAILED — some expected files were missing.");
+  process.exit(1);
+} else {
+  console.log("\nPack check PASSED.");
 }

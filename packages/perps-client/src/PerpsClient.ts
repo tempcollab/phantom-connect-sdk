@@ -43,11 +43,11 @@ import {
   HYPERCORE_MAINNET_CHAIN_ID,
   MARKET_ORDER_SLIPPAGE,
   HYPERLIQUID_SIGN_TRANSACTION_DOMAIN,
-  HYPERLIQUID_MAINNET_CHAIN_ID,
   EIP712_DOMAIN_TYPE,
   USDC_ADDRESSES,
 } from "./constants.js";
 import { assertPositiveDecimalString } from "./validate.js";
+import { parseSignMessageResponse } from "@phantom/parsers";
 
 export interface PerpsClientOptions {
   /** The wallet's EVM address (0x-prefixed, checksummed or lowercase) */
@@ -136,7 +136,6 @@ export class PerpsClient {
       action: leverageAction,
       nonce: leverageNonce,
       signature: leverageSig,
-      taker: this.getUserCaip19(),
     });
 
     const isBuy = params.direction === "long";
@@ -178,7 +177,7 @@ export class PerpsClient {
     this.logger.debug(`openPosition placing order market=${params.market} sz=${sz} limitPx=${limitPx} nonce=${nonce}`);
     const typedData = buildExchangeActionTypedData(action, nonce);
     const sig = await this.sign(typedData);
-    const result = await this.api.postPlaceOrder({ action, nonce, signature: sig, taker: this.getUserCaip19() });
+    const result = await this.api.postPlaceOrder({ action, nonce, signature: sig });
     this.logger.info(`openPosition result status=${result.status}`);
     return { status: result.status, data: result };
   }
@@ -228,7 +227,7 @@ export class PerpsClient {
     );
     const typedData = buildExchangeActionTypedData(action, nonce);
     const sig = await this.sign(typedData);
-    const result = await this.api.postPlaceOrder({ action, nonce, signature: sig, taker: this.getUserCaip19() });
+    const result = await this.api.postPlaceOrder({ action, nonce, signature: sig });
     this.logger.info(`closePosition result status=${result.status}`);
     return { status: result.status, data: result };
   }
@@ -248,7 +247,7 @@ export class PerpsClient {
     const nonce = nextNonce();
     const typedData = buildExchangeActionTypedData(action, nonce);
     const sig = await this.sign(typedData);
-    const result = await this.api.postCancelOrder({ action, nonce, signature: sig, taker: this.getUserCaip19() });
+    const result = await this.api.postCancelOrder({ action, nonce, signature: sig });
     this.logger.info(`cancelOrder result status=${result.status}`);
     return { status: "ok", data: result };
   }
@@ -272,7 +271,7 @@ export class PerpsClient {
     const nonce = nextNonce();
     const typedData = buildExchangeActionTypedData(action, nonce);
     const sig = await this.sign(typedData);
-    const result = await this.api.postUpdateLeverage({ action, nonce, signature: sig, taker: this.getUserCaip19() });
+    const result = await this.api.postUpdateLeverage({ action, nonce, signature: sig });
     return { status: "ok", data: result };
   }
 
@@ -327,7 +326,7 @@ export class PerpsClient {
    */
   async getWithdrawFromSpotQuote(params: WithdrawFromSpotParams): Promise<RelayWithdrawalV2Quote> {
     assertPositiveDecimalString(params.amountUsdc, "amountUsdc");
-    const sellAmount = Math.round(parseFloat(params.amountUsdc) * 1e6).toString();
+    const sellAmount = Math.round(parseFloat(params.amountUsdc) * 1e8).toString();
     const buyToken = params.buyToken ?? this.resolveUsdcBuyToken(params.destinationChainId);
     const takerDestination = `${params.destinationChainId}/address:${params.destinationAddress}`;
     return this.api.getBridgeInitialize({
@@ -354,37 +353,41 @@ export class PerpsClient {
 
     // Step 1: sign the EIP-712 authorize message and post to Relay via backend
     this.logger.info("withdrawFromSpot: signing authorizeStep");
-    const authSignatureHex = await this.signTypedData({
+    const authSignatureRaw = await this.signTypedData({
       domain: authorizeStep.domain,
       types: authorizeStep.types,
       primaryType: authorizeStep.primaryType,
       message: authorizeStep.message,
     });
-    await this.api.postAuthorize(authorizeStep.postEndpoint, {
+    // KMS returns base64url; parseSignMessageResponse converts it to 0x-prefixed hex
+    const { signature: authSignatureHex } = parseSignMessageResponse(authSignatureRaw, "eip155:1" as any);
+    await this.api.postAuthorize("/swap/v2/spot/authorize", {
       ...authorizeStep.postBody,
       signature: authSignatureHex,
     });
 
     // Step 2: sign the sendAsset EIP-712 action and submit to Hyperliquid via backend
     this.logger.info("withdrawFromSpot: signing depositStep (sendAsset)");
-    const action = depositStep.action;
-    const signatureChainId =
-      typeof action.signatureChainId === "string"
-        ? parseInt(action.signatureChainId, 16)
-        : HYPERLIQUID_MAINNET_CHAIN_ID;
+    const actionData = depositStep.action as { type: string; parameters: Record<string, unknown> };
+    // signatureChainId is Ethereum mainnet (1) for Relay withdrawals
+    const signatureChainId = 1;
+    const messageToSign = {
+      ...actionData.parameters,
+      type: actionData.type,
+      signatureChainId: `0x${signatureChainId.toString(16)}`,
+    };
 
     const depositSig = await this.sign({
       domain: { ...HYPERLIQUID_SIGN_TRANSACTION_DOMAIN, chainId: signatureChainId },
       primaryType: depositStep.eip712PrimaryType,
       types: { EIP712Domain: EIP712_DOMAIN_TYPE, ...depositStep.eip712Types },
-      message: action,
+      message: messageToSign,
     });
 
     const sendResult = await this.api.postSpotSend({
-      action,
+      action: messageToSign,
       nonce: depositStep.nonce,
       signature: depositSig,
-      taker: this.getUserCaip19(),
     });
 
     this.logger.info(`withdrawFromSpot complete requestId=${quote.requestId}`);
