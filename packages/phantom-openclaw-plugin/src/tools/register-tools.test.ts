@@ -3,6 +3,7 @@ import { Value } from "@sinclair/typebox/value";
 import type { OpenClawApi } from "../client/types.js";
 import type { PluginSession } from "../session.js";
 import { registerPhantomTools } from "./register-tools.js";
+import { version } from "../../package.json";
 
 type RegisteredTool = Parameters<OpenClawApi["registerTool"]>[0];
 
@@ -162,7 +163,7 @@ describe("registerPhantomTools schema conversion", () => {
           {
             connected: false,
             reason: "No active session found. Call phantom_login or another wallet tool to authenticate.",
-            openClawPluginVersion: "1.0.4",
+            openClawPluginVersion: version,
             provider: "phantom",
           },
           null,
