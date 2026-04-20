@@ -68,7 +68,7 @@ export class InjectedSolanaStrategy implements SolanaStrategy {
     try {
       const result = await provider.connect({ onlyIfTrusted });
       return result.publicKey.toString();
-    } catch (_) {
+    } catch {
       return undefined;
     }
   }

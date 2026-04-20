@@ -149,7 +149,7 @@ export class Ethereum implements IEthereumChain {
           triggerEvent("chainChanged", chainId);
         });
       }
-    } catch (error) {
+    } catch {
       // Silently ignore if native provider unavailable
     }
   }

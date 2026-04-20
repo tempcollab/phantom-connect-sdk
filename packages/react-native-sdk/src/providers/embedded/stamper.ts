@@ -105,13 +105,13 @@ export class ReactNativeStamper implements StamperWithKeyManagement {
 
     try {
       await SecureStore.deleteItemAsync(activeKey);
-    } catch (error) {
+    } catch {
       // Key might not exist, continue
     }
 
     try {
       await SecureStore.deleteItemAsync(pendingKey);
-    } catch (error) {
+    } catch {
       // Key might not exist, continue
     }
 
@@ -139,7 +139,7 @@ export class ReactNativeStamper implements StamperWithKeyManagement {
     if (this.activeKeyRecord) {
       try {
         await SecureStore.deleteItemAsync(this.getActiveKeyName());
-      } catch (error) {
+      } catch {
         // Key might not exist, continue
       }
     }
@@ -155,7 +155,7 @@ export class ReactNativeStamper implements StamperWithKeyManagement {
     await this.storeKeyRecord(this.activeKeyRecord, "active");
     try {
       await SecureStore.deleteItemAsync(this.getPendingKeyName());
-    } catch (error) {
+    } catch {
       // Key might not exist, continue
     }
   }
@@ -171,7 +171,7 @@ export class ReactNativeStamper implements StamperWithKeyManagement {
     // Remove pending key
     try {
       await SecureStore.deleteItemAsync(this.getPendingKeyName());
-    } catch (error) {
+    } catch {
       // Key might not exist, continue
     }
 
@@ -228,7 +228,7 @@ export class ReactNativeStamper implements StamperWithKeyManagement {
       if (storedRecord) {
         return JSON.parse(storedRecord) as StoredKeyRecord;
       }
-    } catch (error) {
+    } catch {
       // If we can't read the key record, assume it doesn't exist
     }
 
@@ -243,7 +243,7 @@ export class ReactNativeStamper implements StamperWithKeyManagement {
       if (storedRecord) {
         return JSON.parse(storedRecord) as StoredKeyRecord;
       }
-    } catch (error) {
+    } catch {
       // If we can't read the key record, assume it doesn't exist
     }
 

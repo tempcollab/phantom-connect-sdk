@@ -52,7 +52,7 @@ class TimeService {
       };
 
       return timestamp;
-    } catch (error) {
+    } catch {
       // Fallback to Date.now() if the time service is unavailable
       return Date.now();
     }

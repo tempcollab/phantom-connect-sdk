@@ -64,7 +64,7 @@ export function parseTransactionResponse(
     try {
       const txBytes = base64urlDecode(base64RawTransaction);
       rawTransaction = "0x" + Buffer.from(txBytes).toString("hex");
-    } catch (error) {
+    } catch {
       // Fallback: assume it's already hex format
       rawTransaction = base64RawTransaction.startsWith("0x") ? base64RawTransaction : "0x" + base64RawTransaction;
     }
@@ -97,7 +97,7 @@ function parseSolanaSignatureResponse(base64Response: string): ParsedSignatureRe
       signature,
       rawSignature: base64Response,
     };
-  } catch (error) {
+  } catch {
     // Fallback: assume it's already a base58 signature
     return {
       signature: base64Response,
@@ -132,7 +132,7 @@ function parseSuiSignatureResponse(base64Response: string): ParsedSignatureResul
       signature,
       rawSignature: base64Response,
     };
-  } catch (error) {
+  } catch {
     return {
       signature: base64Response,
       rawSignature: base64Response,
@@ -153,7 +153,7 @@ function parseBitcoinSignatureResponse(base64Response: string): ParsedSignatureR
       signature,
       rawSignature: base64Response,
     };
-  } catch (error) {
+  } catch {
     return {
       signature: base64Response,
       rawSignature: base64Response,
@@ -170,7 +170,7 @@ export function parseSolanaSignedTransaction(base64RawTransaction: string): Tran
     // Use @phantom/base64url utility for proper browser compatibility
     const transactionBytes = base64urlDecode(base64RawTransaction);
     return deserializeSolanaTransaction(transactionBytes);
-  } catch (error) {
+  } catch {
     // Fallback: return null if both parsing methods fail
     return null;
   }

@@ -39,7 +39,7 @@ export function useSolana(): {
       solana: sdk.solana,
       isAvailable: true,
     };
-  } catch (error) {
+  } catch {
     // If accessing sdk.solana throws (e.g., wallet doesn't support Solana),
     // return a stub object instead of crashing
     // Solana chain not available

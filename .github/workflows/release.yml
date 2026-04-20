@@ -1,3 +1,6 @@
+# owner: wp
+# slack: #wallet-platform
+
 name: Release
 
 on:
@@ -5,28 +8,39 @@ on:
     branches:
       - main
 
-permissions:
-  contents: write
-  pull-requests: write
-  # OIDC for npm provenance
-  id-token: write
+permissions: {}
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
   release:
     name: Publish to npm
-    runs-on: ubuntu-latest
+    runs-on: 2cpu-amd64-tooling
     # Only run on the public mirror — never on the internal repo
     if: github.repository == 'phantom/phantom-connect-sdk'
+    environment: ci
+    permissions:
+      contents: write
+      pull-requests: write
+      # OIDC for npm provenance
+      id-token: write
+      actions: write
     env:
       NPM_CONFIG_PROVENANCE: true
     steps:
       - name: Checkout Repo
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
+        with:
+          # changesets publish uses commitMode: git-cli; credentials must persist for push (zizmor artipacked: explicit opt-in).
+          persist-credentials: true
+            
+      # Self-hosted / locked-down images may not allow symlinks under /usr/bin (default corepack enable).
       - name: Enable Corepack
-        run: corepack enable
+        run: |
+          COREPACK_BIN="${RUNNER_TEMP}/corepack-bin"
+          mkdir -p "${COREPACK_BIN}"
+          corepack enable yarn --install-directory "${COREPACK_BIN}"
+          echo "${COREPACK_BIN}" >> "${GITHUB_PATH}"
 
       - name: Setup Node.js 20.x
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4

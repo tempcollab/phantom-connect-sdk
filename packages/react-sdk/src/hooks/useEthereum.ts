@@ -39,7 +39,7 @@ export function useEthereum(): {
       ethereum: sdk.ethereum,
       isAvailable: true,
     };
-  } catch (error) {
+  } catch {
     // If accessing sdk.ethereum throws (e.g., wallet doesn't support Ethereum),
     // return a stub object instead of crashing
     // Ethereum chain not available

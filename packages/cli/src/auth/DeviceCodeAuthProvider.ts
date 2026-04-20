@@ -1,3 +1,5 @@
+/* eslint-disable security/detect-non-literal-fs-filename */
+
 import { execFile } from "child_process";
 import * as fs from "fs";
 import * as os from "os";

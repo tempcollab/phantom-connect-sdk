@@ -16,7 +16,7 @@ export async function connect({ onlyIfTrusted = false } = {}): Promise<string[]>
       triggerEvent("connect", accounts);
       return accounts;
     }
-  } catch (error) {
+  } catch {
     // Silently fail eager connect attempt
   }
 
@@ -32,7 +32,7 @@ export async function connect({ onlyIfTrusted = false } = {}): Promise<string[]>
       triggerEvent("connect", accounts);
       return accounts;
     }
-  } catch (error) {
+  } catch {
     // Silently fail connect attempt
   }
 

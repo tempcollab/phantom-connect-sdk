@@ -7,15 +7,21 @@ import { version } from "../../package.json";
 
 type RegisteredTool = Parameters<OpenClawApi["registerTool"]>[0];
 
-const mockSetHeaders = jest.fn();
-const mockSetGetHeaders = jest.fn();
+// `jest.mock` is hoisted above `const`; use `var` so the factory can assign before TDZ errors.
+var mockSetHeaders: jest.Mock;
+var mockSetGetHeaders: jest.Mock;
 
-jest.mock("@phantom/phantom-api-client", () => ({
-  PhantomApiClient: jest.fn().mockImplementation(() => ({
-    setHeaders: mockSetHeaders,
-    setGetHeaders: mockSetGetHeaders,
-  })),
-}));
+jest.mock("@phantom/phantom-api-client", () => {
+  mockSetHeaders = jest.fn();
+  mockSetGetHeaders = jest.fn();
+  return {
+    PhantomApiClient: jest.fn().mockImplementation(() => ({
+      setHeaders: mockSetHeaders,
+      setGetHeaders: mockSetGetHeaders,
+      setPaymentHandler: jest.fn(),
+    })),
+  };
+});
 
 jest.mock("@phantom/cli", () => {
   // eslint-disable-next-line @typescript-eslint/consistent-type-imports

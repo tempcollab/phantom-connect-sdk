@@ -8,17 +8,17 @@
       "outputs": ["dist/**", "build/**", ".next/**", "!.next/cache/**"]
     },
     "lint": {
-      "dependsOn": [],
+      "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", "!**/*.md", "!**/coverage/**"],
       "outputs": []
     },
     "check-types": {
-      "dependsOn": [],
+      "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$"],
       "outputs": []
     },
     "test": {
-      "dependsOn": [],
+      "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", "jest.config.*"],
       "outputs": []
     },

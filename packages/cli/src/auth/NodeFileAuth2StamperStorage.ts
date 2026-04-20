@@ -1,3 +1,5 @@
+/* eslint-disable security/detect-non-literal-fs-filename */
+
 import * as fs from "fs";
 import * as path from "path";
 import type { Auth2StamperStorage, Auth2StamperStoredRecord } from "@phantom/auth2";

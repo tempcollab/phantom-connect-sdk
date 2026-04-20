@@ -275,4 +275,4 @@ export {
   type ParsedSignatureResult,
   type ParsedTransactionResult,
 } from "@phantom/parsers";
-export * from "./types";
+export type * from "./types";

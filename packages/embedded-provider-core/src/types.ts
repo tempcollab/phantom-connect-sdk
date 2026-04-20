@@ -26,6 +26,7 @@ export interface SignTypedDataV4Params {
 }
 
 // Use the parsed signature result
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface SignMessageResult extends ParsedSignatureResult {}
 
 export interface SignTransactionParams {
@@ -40,6 +41,7 @@ export interface SignAndSendTransactionParams {
 }
 
 // Use the parsed transaction result instead of raw transaction
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface SignedTransaction extends ParsedTransactionResult {}
 
 export type EmbeddedProviderAuthType = "google" | "apple" | "phantom" | "device";

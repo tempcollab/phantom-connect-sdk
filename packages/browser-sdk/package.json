@@ -28,7 +28,7 @@
     "clean": "rm -rf dist",
     "test": "jest",
     "test:watch": "jest --watch",
-    "lint": "tsc --noEmit && eslint --cache . --ext .ts,.tsx",
+    "lint": "tsc --noEmit && eslint --cache .",
     "check-types": "tsc --noEmit",
     "prettier": "prettier --write \"src/**/*.{ts,tsx}\""
   },
@@ -43,7 +43,7 @@
     "@phantom/indexed-db-stamper": "workspace:^",
     "@phantom/parsers": "workspace:^",
     "@phantom/sdk-types": "workspace:^",
-    "axios": "^1.10.0",
+    "axios": "1.15.1",
     "bs58": "^6.0.0",
     "buffer": "^6.0.3",
     "eventemitter3": "^5.0.1",
@@ -53,7 +53,7 @@
   "devDependencies": {
     "@types/jest": "^29.5.12",
     "@types/node": "^20.11.0",
-    "eslint": "8.53.0",
+    "eslint": "10.2.1",
     "fake-indexeddb": "^4.0.2",
     "jest": "^30.0.5",
     "jest-environment-jsdom": "^30.0.5",

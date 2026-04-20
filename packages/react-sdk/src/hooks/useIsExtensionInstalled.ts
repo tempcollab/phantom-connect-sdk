@@ -19,7 +19,7 @@ export function useIsExtensionInstalled() {
         if (isMounted) {
           setIsInstalled(result);
         }
-      } catch (error) {
+      } catch {
         // If check fails, assume not installed
         if (isMounted) {
           setIsInstalled(false);

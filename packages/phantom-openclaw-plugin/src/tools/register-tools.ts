@@ -377,10 +377,10 @@ export function registerPhantomTools(api: OpenClawApi, pluginSession: PluginSess
       parameters: convertSchema(mcpTool.inputSchema),
       async execute(_id: string, params: Record<string, unknown>) {
         // Create tool context for MCP tool with recursive logger
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         const createLogger = (prefix: string): any => ({
           info: (msg: string) => console.info(`[${prefix}] ${msg}`), // eslint-disable-line no-console
-          error: (msg: string) => console.error(`[${prefix}] ${msg}`), // eslint-disable-line no-console
+          error: (msg: string) => console.error(`[${prefix}] ${msg}`),
           debug: (msg: string) => console.debug(`[${prefix}] ${msg}`), // eslint-disable-line no-console
           child: (name: string) => createLogger(`${prefix}:${name}`),
         });

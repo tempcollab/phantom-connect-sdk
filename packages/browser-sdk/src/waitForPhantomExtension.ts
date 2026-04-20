@@ -27,7 +27,7 @@ export async function waitForPhantomExtension(timeoutMs: number = 3000): Promise
           resolve(true);
           return;
         }
-      } catch (error) {
+      } catch {
         // Extension check failed, continue trying
       }
 

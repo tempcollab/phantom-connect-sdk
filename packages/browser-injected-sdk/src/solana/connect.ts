@@ -15,7 +15,7 @@ export async function connect({ onlyIfTrusted = false } = {}): Promise<string | 
       triggerEvent("connect", address);
       return address;
     }
-  } catch (error) {
+  } catch {
     // Silently fail eager connect attempt
   }
 
@@ -31,7 +31,7 @@ export async function connect({ onlyIfTrusted = false } = {}): Promise<string | 
       triggerEvent("connect", address);
       return address;
     }
-  } catch (error) {
+  } catch {
     // Silently fail eager connect attempt
   }
 

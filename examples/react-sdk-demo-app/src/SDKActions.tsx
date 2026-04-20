@@ -581,7 +581,7 @@ export function SDKActions() {
       let targetAddress: PublicKey;
       try {
         targetAddress = new PublicKey(customSolDestination);
-      } catch (e) {
+      } catch {
         alert("Please enter a valid Solana address for the destination.");
         return;
       }
@@ -610,7 +610,7 @@ export function SDKActions() {
         // Check if sender has USDC token account
         try {
           await getAccount(connection, senderTokenAccount);
-        } catch (error) {
+        } catch {
           alert("You don't have a USDC token account. Please acquire some USDC first.");
           return;
         }
@@ -625,7 +625,7 @@ export function SDKActions() {
           TOKEN_PROGRAM_ID,
         );
         instructions.push(usdcTransferInstruction);
-      } catch (error) {
+      } catch {
         // USDC transfer setup failed - proceeding with SOL transfer only
         alert("Failed to setup USDC transfer. Proceeding with SOL transfer only.");
       }
@@ -794,7 +794,7 @@ export function SDKActions() {
       let targetAddress: PublicKey;
       try {
         targetAddress = new PublicKey(customSolDestination.trim());
-      } catch (error) {
+      } catch {
         alert("Invalid Solana address. Please enter a valid address.");
         return;
       }

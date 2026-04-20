@@ -1,19 +1,18 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
+import coreWebVitals from "eslint-config-next/core-web-vitals";
+import nextTypescript from "eslint-config-next/typescript";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
-
-const eslintConfig = [
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
+// eslint-disable-next-line import/no-anonymous-default-export
+export default [
+  ...coreWebVitals,
+  ...nextTypescript,
+  {
+    // eslint-plugin-react v7.37.5 calls context.getFilename() (removed in ESLint v10)
+    // when react.version is "detect". Pin explicitly to skip auto-detection.
+    settings: {
+      react: { version: "19" },
+    },
+  },
   {
     ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts"],
   },
 ];
-
-export default eslintConfig;

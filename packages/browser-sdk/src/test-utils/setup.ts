@@ -73,7 +73,7 @@ if (typeof globalThis.crypto === "undefined") {
 // Note: This is ONLY for testing - production code remains isomorphic
 // and uses native TextEncoder/TextDecoder available in browsers and Node.js
 if (typeof globalThis.TextEncoder === "undefined") {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { TextEncoder, TextDecoder } = require("util");
   Object.defineProperty(globalThis, "TextEncoder", {
     value: TextEncoder,

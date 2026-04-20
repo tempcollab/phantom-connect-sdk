@@ -19,7 +19,7 @@ export function useIsPhantomLoginAvailable() {
         if (isMounted) {
           setIsAvailable(result);
         }
-      } catch (error) {
+      } catch {
         // If check fails, assume not available
         if (isMounted) {
           setIsAvailable(false);

@@ -1,3 +1,5 @@
+/* eslint-disable security/detect-non-literal-fs-filename */
+
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
@@ -66,7 +68,7 @@ export class SessionStorage {
       }
 
       return session as SessionData;
-    } catch (error) {
+    } catch {
       // If file is corrupted or unreadable, treat as no session
       return null;
     }
@@ -91,7 +93,7 @@ export class SessionStorage {
       if (fs.existsSync(this.sessionFile)) {
         fs.unlinkSync(this.sessionFile);
       }
-    } catch (error) {
+    } catch {
       // If file doesn't exist or can't be deleted, ignore
     }
   }

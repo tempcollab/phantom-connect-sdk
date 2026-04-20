@@ -109,7 +109,7 @@ export function parseBrowserFromUserAgent(userAgent: string, hasBraveAPI?: boole
         }
       }
     }
-  } catch (error) {
+  } catch {
     // Fallback to unknown if any error occurs
     // Browser parsing failed, continuing with fallback
   }
@@ -184,7 +184,7 @@ export function isMobileDevice(): boolean {
   try {
     // Check if screen is smaller than typical tablet size
     isSmallScreen = window.screen.width <= 768 || window.screen.height <= 768;
-  } catch (error) {
+  } catch {
     // If screen API is not available, rely on user agent only
     isSmallScreen = false;
   }
@@ -193,7 +193,7 @@ export function isMobileDevice(): boolean {
   let isTouchDevice = false;
   try {
     isTouchDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
-  } catch (error) {
+  } catch {
     // If touch API is not available, rely on other indicators
     isTouchDevice = false;
   }

@@ -15,6 +15,7 @@ import { ModalProvider } from "./ModalProvider";
 
 export type PhantomSDKConfig = BrowserSDKConfig;
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface PhantomDebugConfig extends DebugConfig {}
 
 export interface ConnectOptions {

@@ -16,7 +16,7 @@ export { darkTheme, lightTheme, mergeTheme } from "@phantom/wallet-sdk-ui";
 export type { PhantomTheme, ComputedPhantomTheme, HexColor } from "@phantom/wallet-sdk-ui";
 
 // Types
-export * from "./types";
+export type * from "./types";
 
 // Re-export useful types and utilities from browser-sdk
 export {

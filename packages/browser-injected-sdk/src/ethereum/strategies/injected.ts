@@ -72,7 +72,7 @@ export class InjectedEthereumStrategy implements EthereumStrategy {
         method: onlyIfTrusted ? "eth_accounts" : "eth_requestAccounts",
       });
       return accounts;
-    } catch (_) {
+    } catch {
       return undefined;
     }
   }
@@ -92,7 +92,7 @@ export class InjectedEthereumStrategy implements EthereumStrategy {
     try {
       const accounts = await provider.request({ method: "eth_accounts" });
       return accounts || [];
-    } catch (_) {
+    } catch {
       return [];
     }
   }

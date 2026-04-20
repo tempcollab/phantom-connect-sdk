@@ -1,4 +1,4 @@
-import { Cli } from "incur";
+import { Cli, z } from "incur";
 import { SessionManager } from "./session/manager.js";
 import { Logger } from "./utils/logger.js";
 import { PhantomApiClient } from "@phantom/phantom-api-client";
@@ -29,11 +29,55 @@ const MCP_INSTRUCTIONS = [
     "If an auth error occurs, re-authentication is triggered and the agent should retry after the user completes browser sign-in.",
 ];
 
+const STATIC_HEADERS: Record<string, string> = {
+  [ANALYTICS_HEADERS.PLATFORM]: "ext-sdk",
+  [ANALYTICS_HEADERS.CLIENT]: "mcp",
+  [ANALYTICS_HEADERS.SDK_VERSION]: process.env["PHANTOM_VERSION"] ?? "0.0.1",
+  // Signal to the backend that this client supports all order types (limit, TP, SL).
+  // "0.0.0-dev" is treated as always-eligible by isClientVersionEligible().
+  "x-phantom-version": "0.0.0-dev",
+};
+
+const logger = new Logger("cli");
+const manager = new SessionManager();
+const apiClient = new PhantomApiClient({
+  baseUrl: process.env["PHANTOM_API_BASE_URL"] ?? "https://api.phantom.app",
+});
+
+apiClient.setGetHeaders(() => manager.getOAuthHeaders());
+
+apiClient.setPaymentHandler(async payment => {
+  const client = manager.getClient();
+  const session = manager.getSession();
+
+  const addresses = await client.getWalletAddresses(session.walletId);
+  const account = addresses.find(address => address.addressType === AddressType.solana)?.address;
+  if (!account) {
+    throw new Error("No Solana address found for payment");
+  }
+
+  const txBytes = Buffer.from(payment.preparedTx, "base64");
+  const result = await client.signAndSendTransaction({
+    walletId: session.walletId,
+    transaction: base64urlEncode(txBytes),
+    networkId: NetworkId.SOLANA_MAINNET,
+    account,
+  });
+
+  if (!result.hash) {
+    throw new Error("Payment tx submitted but no signature returned");
+  }
+  return result.hash;
+});
+
 export const cli = Cli.create("phantom", {
   version: packageJson.version,
   description: "Interact with your Phantom wallet from the terminal",
-  // Prior to middleware, vars are undefined
-  vars: varsSchema.partial(),
+  vars: z.object({
+    apiClient: varsSchema.shape.apiClient.default(apiClient),
+    logger: varsSchema.shape.logger.default(logger),
+    manager: varsSchema.shape.manager.default(manager),
+  }),
   mcp: {
     instructions: MCP_INSTRUCTIONS.join("\n"),
   },
@@ -50,64 +94,20 @@ export const cli = Cli.create("phantom", {
 });
 
 cli.use(async (c, next) => {
-  const logger = new Logger("cli");
-  const manager = new SessionManager();
-
-  const apiClient = new PhantomApiClient({
-    baseUrl: process.env["PHANTOM_API_BASE_URL"] ?? "https://api.phantom.app",
-  });
-
   // The login command manages its own auth via resetSession() — skip initialize()
   // and session-dependent setup so the middleware doesn't trigger a redundant auth flow.
-  if (c.command !== "login") {
-    await manager.initialize();
-
-    // Analytics / attribution headers
-    const staticHeaders: Record<string, string> = {
-      [ANALYTICS_HEADERS.PLATFORM]: "ext-sdk",
-      [ANALYTICS_HEADERS.CLIENT]: "mcp",
-      [ANALYTICS_HEADERS.SDK_VERSION]: process.env["PHANTOM_VERSION"] ?? "0.0.1",
-      // Signal to the backend that this client supports all order types (limit, TP, SL).
-      // "0.0.0-dev" is treated as always-eligible by isClientVersionEligible().
-      "x-phantom-version": "0.0.0-dev",
-    };
-    const appId = process.env["PHANTOM_APP_ID"] ?? process.env["PHANTOM_CLIENT_ID"] ?? manager.getSession().appId;
-    if (appId) {
-      staticHeaders["x-api-key"] = appId;
-      staticHeaders["X-App-Id"] = appId;
-    }
-    apiClient.setHeaders(staticHeaders);
-
-    apiClient.setGetHeaders(() => manager.getOAuthHeaders());
-
-    apiClient.setPaymentHandler(async payment => {
-      const client = manager.getClient();
-      const session = manager.getSession();
-
-      const addresses = await client.getWalletAddresses(session.walletId);
-      const account = addresses.find(address => address.addressType === AddressType.solana)?.address;
-      if (!account) {
-        throw new Error("No Solana address found for payment");
-      }
-
-      const txBytes = Buffer.from(payment.preparedTx, "base64");
-      const result = await client.signAndSendTransaction({
-        walletId: session.walletId,
-        transaction: base64urlEncode(txBytes),
-        networkId: NetworkId.SOLANA_MAINNET,
-        account,
-      });
-
-      if (!result.hash) {
-        throw new Error("Payment tx submitted but no signature returned");
-      }
-      return result.hash;
-    });
+  if (c.command !== "login" && !c.var.manager.isInitialized()) {
+    await c.var.manager.initialize();
   }
 
-  c.set("apiClient", apiClient);
-  c.set("logger", logger);
-  c.set("manager", manager);
+  const sessionAppId = c.var.manager.isInitialized() ? c.var.manager.getSession().appId : undefined;
+  const appId = process.env["PHANTOM_APP_ID"] ?? process.env["PHANTOM_CLIENT_ID"] ?? sessionAppId;
+
+  if (appId) {
+    STATIC_HEADERS[ANALYTICS_HEADERS.APP_ID] = appId;
+    STATIC_HEADERS["x-api-key"] = appId;
+  }
+  apiClient.setHeaders(STATIC_HEADERS);
 
   await next();
 });

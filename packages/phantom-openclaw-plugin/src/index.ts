@@ -120,7 +120,7 @@ export default function register(api: OpenClawApi) {
     const session = getSession(api.config);
     registerPhantomTools(api, session);
   } catch (error) {
-    console.error("Failed to initialize Phantom OpenClaw plugin:", error); // eslint-disable-line no-console
+    console.error("Failed to initialize Phantom OpenClaw plugin:", error);
     // Reset singleton so next attempt gets a fresh instance
     resetSession();
     throw error;

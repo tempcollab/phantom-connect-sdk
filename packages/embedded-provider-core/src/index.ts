@@ -1,5 +1,5 @@
-export * from "./interfaces";
-export * from "./types";
+export type * from "./interfaces";
+export type * from "./types";
 export * from "./embedded-provider";
 export * from "./utils/session";
 export * from "./utils/retry";

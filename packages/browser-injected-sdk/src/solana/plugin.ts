@@ -122,7 +122,7 @@ export class Solana implements ISolanaChain {
           }
         });
       }
-    } catch (error) {
+    } catch {
       // Silently ignore if native provider unavailable
     }
   }
