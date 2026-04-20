@@ -15,7 +15,7 @@ concurrency: ${{ github.workflow }}-${{ github.ref }}
 jobs:
   release:
     name: Publish to npm
-    runs-on: 2cpu-amd64-tooling
+    runs-on: ubuntu-latest
     # Only run on the public mirror — never on the internal repo
     if: github.repository == 'phantom/phantom-connect-sdk'
     environment: ci
