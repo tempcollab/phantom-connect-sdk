@@ -68,7 +68,7 @@ function registerToolsForTest() {
     getOAuthHeaders: jest.fn().mockReturnValue({ authorization: "Bearer token", "x-auth-user-id": "user-1" }),
   } as unknown as PluginSession;
 
-  registerPhantomTools(api, session);
+  registerPhantomTools(api, session, {});
   return { registeredTools, registeredContexts };
 }
 

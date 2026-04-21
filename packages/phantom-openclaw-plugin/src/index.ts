@@ -50,28 +50,11 @@ function getPluginConfig(fullConfig?: Record<string, unknown>): Record<string, u
   return fullConfig;
 }
 
-function applyConfigToEnv(config?: Record<string, unknown>): void {
-  if (!config) return;
-
-  const pluginConfig = PluginConfigSchema.parse(config);
-
-  for (const [key, value] of Object.entries(pluginConfig)) {
-    if (value !== undefined) {
-      process.env[key] = String(value);
-    }
-  }
-}
-
 /**
  * Get or create the plugin session with configuration
  */
-function getSession(config?: Record<string, unknown>): PluginSession {
+function getSession(callbackPort?: number): PluginSession {
   if (!sessionInstance) {
-    const pluginConfig = getPluginConfig(config);
-    applyConfigToEnv(pluginConfig);
-    const envPort = process.env.PHANTOM_CALLBACK_PORT;
-    const callbackPort = envPort ? Number.parseInt(envPort, 10) : undefined;
-
     sessionInstance = new PluginSession({
       callbackPort,
       authFlow: "device-code",
@@ -92,8 +75,10 @@ function resetSession(): void {
  */
 export default function register(api: OpenClawApi) {
   try {
-    const session = getSession(api.config);
-    registerPhantomTools(api, session);
+    const rawConfig = getPluginConfig(api.config) ?? {};
+    const config = PluginConfigSchema.parse(rawConfig);
+    const session = getSession(config.PHANTOM_CALLBACK_PORT);
+    registerPhantomTools(api, session, config);
   } catch (error) {
     console.error("Failed to initialize Phantom OpenClaw plugin:", error);
     // Reset singleton so next attempt gets a fresh instance

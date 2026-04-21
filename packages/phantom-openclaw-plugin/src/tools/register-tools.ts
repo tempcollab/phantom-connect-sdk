@@ -4,12 +4,11 @@
 
 import { Type } from "@sinclair/typebox";
 import type { TSchema } from "@sinclair/typebox";
-import { SessionManager, tools } from "@phantom/cli";
+import { SessionManager, tools, type PluginConfig, type ToolContext } from "@phantom/cli";
 import { PhantomApiClient } from "@phantom/phantom-api-client";
 import type { OpenClawApi } from "../client/types.js";
 import type { PluginSession } from "../session.js";
 import * as packageJson from "../../package.json";
-import type { ToolContext } from "@phantom/cli";
 
 /**
  * Convert MCP tool JSON schema to TypeBox schema
@@ -347,16 +346,16 @@ function addPluginVersion(result: unknown): unknown {
 /**
  * Register all Phantom MCP tools with OpenClaw
  */
-export function registerPhantomTools(api: OpenClawApi, pluginSession: PluginSession): void {
+export function registerPhantomTools(api: OpenClawApi, pluginSession: PluginSession, config: PluginConfig): void {
   const apiClient = new PhantomApiClient({
-    baseUrl: process.env.PHANTOM_API_BASE_URL ?? "https://api.phantom.app",
+    baseUrl: config.PHANTOM_API_BASE_URL ?? "https://api.phantom.app",
   });
   const manager = new SessionManager();
 
   const staticHeaders: Record<string, string> = {
     [ANALYTICS_HEADER_PLATFORM]: "ext-sdk",
     [ANALYTICS_HEADER_CLIENT]: "mcp",
-    [ANALYTICS_HEADER_SDK_VERSION]: process.env.PHANTOM_VERSION ?? packageJson.version ?? "unknown",
+    [ANALYTICS_HEADER_SDK_VERSION]: config.PHANTOM_VERSION ?? packageJson.version ?? "unknown",
   };
   apiClient.setHeaders(staticHeaders);
   apiClient.setGetHeaders(() => pluginSession.getOAuthHeaders());
@@ -464,8 +463,8 @@ export function registerPhantomTools(api: OpenClawApi, pluginSession: PluginSess
 
           const sessionData = pluginSession.getSession();
           const appId =
-            process.env.PHANTOM_APP_ID ??
-            process.env.PHANTOM_CLIENT_ID ??
+            config.PHANTOM_APP_ID ??
+            config.PHANTOM_CLIENT_ID ??
             (typeof sessionData.appId === "string" ? sessionData.appId : undefined);
           if (appId) {
             apiClient.setHeaders({
