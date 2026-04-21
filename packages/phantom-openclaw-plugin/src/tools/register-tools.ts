@@ -352,7 +352,6 @@ export function registerPhantomTools(api: OpenClawApi, pluginSession: PluginSess
     baseUrl: process.env.PHANTOM_API_BASE_URL ?? "https://api.phantom.app",
   });
   const manager = new SessionManager();
-  void manager.initialize();
 
   const staticHeaders: Record<string, string> = {
     [ANALYTICS_HEADER_PLATFORM]: "ext-sdk",

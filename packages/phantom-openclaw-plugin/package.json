@@ -1,6 +1,6 @@
 {
   "name": "@phantom/phantom-openclaw-plugin",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "Phantom Embedded Wallet — sign transactions, transfer tokens, and swap on Solana and Ethereum. Powered by Phantom.",
   "repository": {
     "type": "git",
@@ -25,7 +25,8 @@
   "scripts": {
     "?pack-release": "When https://github.com/changesets/changesets/issues/432 has a solution we can remove this trick",
     "pack-release": "rimraf ./_release && yarn pack && mkdir ./_release && tar zxvf ./package.tgz --directory ./_release && rm ./package.tgz",
-    "build": "rimraf ./dist && tsup",
+    "generate": "tsx scripts/generate-manifest.ts && yarn prettier --write openclaw.plugin.json",
+    "build": "yarn generate && rimraf ./dist && tsup",
     "dev": "tsup --watch",
     "clean": "rimraf dist",
     "test": "jest",
@@ -43,6 +44,7 @@
     "rimraf": "^6.0.1",
     "ts-jest": "^29.1.2",
     "tsup": "^6.7.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.0.4"
   },
   "dependencies": {

@@ -5,7 +5,6 @@
   "skills": ["./skills"],
   "configSchema": {
     "type": "object",
-    "additionalProperties": false,
     "properties": {
       "PHANTOM_AUTH_BASE_URL": {
         "type": "string",
@@ -37,9 +36,19 @@
         "minLength": 1
       },
       "PHANTOM_MCP_DEBUG": {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
+      },
+      "PHANTOM_APP_ID": {
+        "type": "string",
+        "minLength": 1
+      },
+      "PHANTOM_CLIENT_ID": {
+        "type": "string",
+        "minLength": 1
       }
-    }
+    },
+    "additionalProperties": false
   },
   "uiHints": {
     "PHANTOM_AUTH_BASE_URL": {
@@ -69,6 +78,14 @@
     "PHANTOM_MCP_DEBUG": {
       "label": "Enable Debug Logging",
       "placeholder": "1"
+    },
+    "PHANTOM_APP_ID": {
+      "label": "App ID",
+      "placeholder": "your-app-id"
+    },
+    "PHANTOM_CLIENT_ID": {
+      "label": "Client ID",
+      "placeholder": "your-client-id"
     }
   }
 }

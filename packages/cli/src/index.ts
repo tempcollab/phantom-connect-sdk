@@ -132,3 +132,5 @@ export type { DeviceCodeAuthDisplayOptions } from "./auth/DeviceCodeAuthProvider
 export type { PhantomClient } from "@phantom/client";
 export { tools, getTool, getToolNames } from "./tools/index.js";
 export type { ToolHandler, ToolContext, ToolInputSchema } from "./tools/types.js";
+export { PluginConfigSchema, PluginConfigJsonSchema } from "./plugin-config.js";
+export type { PluginConfig } from "./plugin-config.js";
