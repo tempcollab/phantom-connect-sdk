@@ -90,11 +90,22 @@ export class SessionStorage {
    */
   delete(): void {
     try {
+      this.deleteStrict();
+    } catch {
+      // If file doesn't exist or can't be deleted, ignore
+    }
+  }
+
+  /**
+   * Deletes the session file from disk, throwing if removal fails.
+   */
+  deleteStrict(): void {
+    try {
       if (fs.existsSync(this.sessionFile)) {
         fs.unlinkSync(this.sessionFile);
       }
-    } catch {
-      // If file doesn't exist or can't be deleted, ignore
+    } catch (error) {
+      throw new Error(`Failed to delete session.json: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

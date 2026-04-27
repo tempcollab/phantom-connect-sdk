@@ -38,7 +38,7 @@ import {
   type SignUTF8Message,
   type SignUtf8MessageRequest,
 } from "@phantom/openapi-wallet-service";
-import axios, { type AxiosInstance } from "axios";
+import axios, { type AxiosResponse, isAxiosError, type AxiosInstance } from "axios";
 import { Buffer } from "buffer";
 import { deriveSubmissionConfig } from "./caip2-mappings";
 import { DerivationPath, getNetworkConfig } from "./constants";
@@ -243,7 +243,7 @@ export class PhantomClient {
       };
     } catch (error: any) {
       this.logger?.error(`Failed to create wallet: ${JSON.stringify(error.response?.data) || error.message}`);
-      throw new Error(`Failed to create wallet: ${error.response?.data?.message || error.message}`);
+      throw this.wrapAxiosError(`Failed to create wallet: ${error.response?.data?.message || error.message}`, error);
     }
   }
 
@@ -498,7 +498,7 @@ export class PhantomClient {
         `[TX_DEBUG] performTransactionSigning failed: methodName=${methodName} status=${axiosStatus} body=${JSON.stringify(axiosData)}`,
       );
 
-      throw new Error(getErrorMessage(error, `Failed to ${actionType} transaction`));
+      throw this.wrapAxiosError(getErrorMessage(error, `Failed to ${actionType} transaction`), error);
     }
   }
 
@@ -559,7 +559,10 @@ export class PhantomClient {
       return addresses;
     } catch (error: any) {
       this.logger?.error(`Failed to get wallet addresses: ${JSON.stringify(error.response?.data) || error.message}`);
-      throw new Error(`Failed to get wallet addresses: ${error.response?.data?.message || error.message}`);
+      throw this.wrapAxiosError(
+        `Failed to get wallet addresses: ${error.response?.data?.message || error.message}`,
+        error,
+      );
     }
   }
 
@@ -610,7 +613,10 @@ export class PhantomClient {
       return result.signature;
     } catch (error: any) {
       this.logger?.error(`Failed to sign Ethereum message: ${JSON.stringify(error.response?.data) || error.message}`);
-      throw new Error(`Failed to sign Ethereum message: ${error.response?.data?.message || error.message}`);
+      throw this.wrapAxiosError(
+        `Failed to sign Ethereum message: ${error.response?.data?.message || error.message}`,
+        error,
+      );
     }
   }
 
@@ -661,7 +667,7 @@ export class PhantomClient {
       return result.signature;
     } catch (error: any) {
       this.logger?.error(`Failed to sign raw payload: ${JSON.stringify(error.response?.data) || error.message}`);
-      throw new Error(`Failed to sign raw payload: ${error.response?.data?.message || error.message}`);
+      throw this.wrapAxiosError(`Failed to sign raw payload: ${error.response?.data?.message || error.message}`, error);
     }
   }
 
@@ -711,7 +717,7 @@ export class PhantomClient {
       return result.signature;
     } catch (error: any) {
       this.logger?.error(`Failed to sign typed data: ${JSON.stringify(error.response?.data) || error.message}`);
-      throw new Error(`Failed to sign typed data: ${error.response?.data?.message || error.message}`);
+      throw this.wrapAxiosError(`Failed to sign typed data: ${error.response?.data?.message || error.message}`, error);
     }
   }
 
@@ -750,7 +756,7 @@ export class PhantomClient {
       };
     } catch (error: any) {
       this.logger?.error(`Failed to get wallets: ${JSON.stringify(error.response?.data) || error.message}`);
-      throw new Error(`Failed to get wallets: ${error.response?.data?.message || error.message}`);
+      throw this.wrapAxiosError(`Failed to get wallets: ${error.response?.data?.message || error.message}`, error);
     }
   }
 
@@ -772,7 +778,7 @@ export class PhantomClient {
       return result;
     } catch (error: any) {
       this.logger?.error(`Failed to get organization: ${JSON.stringify(error.response?.data) || error.message}`);
-      throw new Error(`Failed to get organization: ${error.response?.data?.message || error.message}`);
+      throw this.wrapAxiosError(`Failed to get organization: ${error.response?.data?.message || error.message}`, error);
     }
   }
 
@@ -841,7 +847,10 @@ export class PhantomClient {
       return result;
     } catch (error: any) {
       this.logger?.error(`Failed to create organization: ${JSON.stringify(error.response?.data) || error.message}`);
-      throw new Error(`Failed to create organization: ${error.response?.data?.message || error.message}`);
+      throw this.wrapAxiosError(
+        `Failed to create organization: ${error.response?.data?.message || error.message}`,
+        error,
+      );
     }
   }
 
@@ -881,7 +890,10 @@ export class PhantomClient {
       return result;
     } catch (error: any) {
       this.logger?.error(`Failed to create authenticator: ${JSON.stringify(error.response?.data) || error.message}`);
-      throw new Error(`Failed to create authenticator: ${error.response?.data?.message || error.message}`);
+      throw this.wrapAxiosError(
+        `Failed to create authenticator: ${error.response?.data?.message || error.message}`,
+        error,
+      );
     }
   }
 
@@ -908,7 +920,10 @@ export class PhantomClient {
       return result;
     } catch (error: any) {
       this.logger?.error(`Failed to delete authenticator: ${JSON.stringify(error.response?.data) || error.message}`);
-      throw new Error(`Failed to delete authenticator: ${error.response?.data?.message || error.message}`);
+      throw this.wrapAxiosError(
+        `Failed to delete authenticator: ${error.response?.data?.message || error.message}`,
+        error,
+      );
     }
   }
 
@@ -932,7 +947,10 @@ export class PhantomClient {
       this.logger?.error(
         `Failed to grant organization access: ${JSON.stringify(error.response?.data) || error.message}`,
       );
-      throw new Error(`Failed to grant organization access: ${error.response?.data?.message || error.message}`);
+      throw this.wrapAxiosError(
+        `Failed to grant organization access: ${error.response?.data?.message || error.message}`,
+        error,
+      );
     }
   }
 
@@ -953,7 +971,10 @@ export class PhantomClient {
       this.logger?.error(
         `Failed to add user to organization: ${JSON.stringify(error.response?.data) || error.message}`,
       );
-      throw new Error(`Failed to add user to organization: ${error.response?.data?.message || error.message}`);
+      throw this.wrapAxiosError(
+        `Failed to add user to organization: ${error.response?.data?.message || error.message}`,
+        error,
+      );
     }
   }
 
@@ -977,7 +998,10 @@ export class PhantomClient {
       return result;
     } catch (error: any) {
       this.logger?.error(`Failed to get wallet with tag: ${JSON.stringify(error.response?.data) || error.message}`);
-      throw new Error(`Failed to get wallet with tag: ${error.response?.data?.message || error.message}`);
+      throw this.wrapAxiosError(
+        `Failed to get wallet with tag: ${error.response?.data?.message || error.message}`,
+        error,
+      );
     }
   }
 
@@ -1008,5 +1032,16 @@ export class PhantomClient {
     }
 
     return config;
+  }
+
+  /**
+   * Wraps an error message while preserving the original axios response so callers can inspect HTTP status codes.
+   */
+  private wrapAxiosError(message: string, cause: unknown): Error & { response?: AxiosResponse } {
+    const wrapped: Error & { response?: AxiosResponse } = new Error(message);
+    if (isAxiosError(cause)) {
+      wrapped.response = cause.response;
+    }
+    return wrapped;
   }
 }

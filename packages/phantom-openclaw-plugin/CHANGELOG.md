@@ -1,5 +1,14 @@
 # @phantom/openclaw-plugin
 
+## 1.2.6
+
+### Patch Changes
+
+- 1e542fb: upgrade packages, improving commands
+- Updated dependencies [1e542fb]
+  - @phantom/cli@1.2.6
+  - @phantom/phantom-api-client@1.2.1
+
 ## 1.2.0
 
 ### Minor Changes

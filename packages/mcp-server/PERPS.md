@@ -99,7 +99,7 @@ Opens a perpetual position on Hyperliquid. Supports market and limit orders in l
 
 - Use `perps_markets` first to verify the market symbol and current price.
 - Market orders apply a 10% slippage buffer automatically.
-- Requires USDC in the perps account. Use `perps_deposit` then `perps_transfer` if needed.
+- Requires USDC in the perps account. Use `perps_deposit` to bridge tokens from an external chain if needed.
 
 ---
 
@@ -152,13 +152,13 @@ Moves USDC from the Hyperliquid spot account into the perpetuals account. This i
 - `walletId` (optional)
 - `derivationIndex` (optional)
 
-**Note:** USDC must already be in your Hyperliquid spot account. Use `perps_deposit` to bridge tokens from external chains first.
+**Note:** USDC must already be in your Hyperliquid spot account. Use this tool when you have USDC in Hyperliquid spot that you want to move into the perps account.
 
 ---
 
 ### `perps_deposit`
 
-Bridges tokens from an external chain (Solana, Arbitrum, Base, Ethereum, Polygon) into Hyperliquid as USDC via a cross-chain swap. USDC is delivered to your Hyperliquid spot account. Call `perps_transfer` afterwards to move it into the perp account.
+Bridges tokens from an external chain (Solana, Arbitrum, Base, Ethereum, Polygon) into Hyperliquid as USDC via a cross-chain swap. USDC is delivered directly to your Hyperliquid perps account.
 
 **Parameters:**
 
@@ -202,11 +202,10 @@ Withdraws USDC from the Hyperliquid spot account to an external destination (e.g
 ### Fund and open a position
 
 ```
-1. perps_deposit   — bridge USDC from Solana/Arbitrum/Base to Hyperliquid spot
-2. perps_transfer  — move USDC from Hyperliquid spot → perps account
-3. perps_markets   — check the market symbol and current price
-4. perps_open      — open a long or short position
-5. perps_positions — verify the position was opened
+1. perps_deposit   — bridge USDC from Solana/Arbitrum/Base directly into the Hyperliquid perps account
+2. perps_markets   — check the market symbol and current price
+3. perps_open      — open a long or short position
+4. perps_positions — verify the position was opened
 ```
 
 ### Close and withdraw

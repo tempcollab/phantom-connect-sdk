@@ -79,7 +79,7 @@ Open a perpetual position on Hyperliquid. Supports market and limit orders in lo
 
 - Run `phantom perps markets` first to verify the market symbol and current price.
 - Market orders apply a 10% slippage buffer automatically.
-- Requires USDC in the perps account. Use `phantom perps deposit` then `phantom perps transfer` if needed.
+- Requires USDC in the perps account. Use `phantom perps deposit` to bridge tokens from an external chain if needed.
 
 ---
 
@@ -132,13 +132,13 @@ Move USDC from the Hyperliquid spot account into the perpetuals account. This is
 - `--walletId` (optional)
 - `--derivationIndex` (optional)
 
-**Note:** USDC must already be in your Hyperliquid spot account. Use `phantom perps deposit` to bridge tokens from external chains first.
+**Note:** USDC must already be in your Hyperliquid spot account. Use this command when you have USDC in Hyperliquid spot that you want to move into the perps account.
 
 ---
 
 ### `phantom perps deposit` — MCP: `perps_deposit`
 
-Bridge tokens from an external chain (Solana, Arbitrum, Base, Ethereum, Polygon) into Hyperliquid as USDC via a cross-chain swap. USDC is delivered to your Hyperliquid spot account. Run `phantom perps transfer` afterwards to move it into the perp account.
+Bridge tokens from an external chain (Solana, Arbitrum, Base, Ethereum, Polygon) into Hyperliquid as USDC via a cross-chain swap. USDC is delivered directly to your Hyperliquid perps account.
 
 **Options:**
 
@@ -171,19 +171,16 @@ Bridge USDC from the Hyperliquid perpetuals account to an external chain (Solana
 ### Fund and open a position
 
 ```bash
-# 1. Bridge USDC from Solana to Hyperliquid spot
+# 1. Bridge USDC from Solana directly into the perps account
 phantom perps deposit --sourceChainId solana:mainnet --amount 100 --execute
 
-# 2. Move USDC from Hyperliquid spot into perps account
-phantom perps transfer --amountUsdc 100
-
-# 3. Check available markets and current price
+# 2. Check available markets and current price
 phantom perps markets
 
-# 4. Open a long position
+# 3. Open a long position
 phantom perps open --market BTC --direction long --sizeUsd 100 --leverage 5 --orderType market
 
-# 5. Verify the position
+# 4. Verify the position
 phantom perps positions
 ```
 

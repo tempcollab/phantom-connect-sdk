@@ -2,7 +2,10 @@
  * Utilities for building Phantom Portfolio API requests.
  */
 
+import { z } from "incur";
 import type { ToolContext } from "../tools/types.js";
+import { Caip19Schema } from "./schemas.js";
+import type { PhantomApiClient } from "@phantom/phantom-api-client";
 
 /**
  * Maps agent-friendly network names to wallet address type and CAIP-19 chain prefix.
@@ -61,28 +64,41 @@ export function buildCaip19Addresses(networks: string[], addressByType: Record<s
 
 // --- Portfolio API types ---
 
-export interface PortfolioWalletBalance {
-  address: string;
-  quantity: number;
-  quantityString: string;
-}
+const PortfolioWalletBalanceSchema = z.object({
+  address: z.string(),
+  quantity: z.number(),
+  quantityString: z.string(),
+});
 
-export interface PortfolioItem {
-  name: string;
-  symbol: string;
-  decimals: number;
-  caip19: string;
-  totalQuantity: number;
-  totalQuantityString: string;
-  spamStatus: string;
-  logoUri?: string;
-  price?: { price: number; priceChange24h: number };
-  queriedWalletBalances: PortfolioWalletBalance[];
-}
+const PortfolioItemSchema = z.object({
+  name: z.string(),
+  symbol: z.string(),
+  decimals: z.number(),
+  caip19: z.string(),
+  totalQuantity: z.number(),
+  totalQuantityString: z.string(),
+  spamStatus: z.string(),
+  logoUri: z.string().optional(),
+  price: z
+    .object({
+      price: z.number(),
+      priceChange24h: z.number(),
+      marketCap: z.number().optional(),
+      lastUpdatedAt: z.string().optional(),
+    })
+    .optional(),
+  queriedWalletBalances: z.array(PortfolioWalletBalanceSchema),
+  marketCap: z.number().optional(),
+  lastUpdatedAt: z.string().optional(),
+});
 
-export interface PortfolioResponse {
-  items: PortfolioItem[];
-}
+export type PortfolioItem = z.infer<typeof PortfolioItemSchema>;
+
+const PortfolioResponseSchema = z.object({
+  items: z.array(PortfolioItemSchema),
+});
+
+export type PortfolioResponse = z.infer<typeof PortfolioResponseSchema>;
 
 /**
  * Fetches fungible token balances from the Phantom Portfolio API.
@@ -105,10 +121,36 @@ export async function fetchPortfolioBalances(context: ToolContext, networks: str
   logger.info(`Fetching token balances for networks: ${networks.join(", ")}`);
   logger.debug(`CAIP-19 addresses: ${caip19Addresses.join(", ")}`);
 
-  const result = await apiClient.get<PortfolioResponse>("/portfolio/v1/fungibles/balances", {
-    params: { walletAddresses: caip19Addresses.join(","), includePrices: "true" },
+  const result = await fetchPortfolioBalance(apiClient, {
+    walletAddresses: caip19Addresses,
+    includePrices: "true",
   });
 
   logger.info("Successfully fetched token balances");
   return result;
+}
+
+const PortfolioBalanceQueryParamsSchema = z.object({
+  walletAddresses: z.array(Caip19Schema),
+  includePrices: z.union([z.literal("true"), z.literal("false")]),
+  fungibleAddresses: z.array(Caip19Schema).optional(),
+  currency: z.string().optional(),
+});
+
+export async function fetchPortfolioBalance(
+  apiClient: PhantomApiClient,
+  params: z.infer<typeof PortfolioBalanceQueryParamsSchema>,
+) {
+  const parsedParams = PortfolioBalanceQueryParamsSchema.parse(params);
+
+  const result = await apiClient.get<PortfolioResponse>("/portfolio/v1/fungibles/balances", {
+    params: {
+      walletAddresses: parsedParams.walletAddresses.join(","),
+      includePrices: parsedParams.includePrices,
+      ...(parsedParams.fungibleAddresses ? { fungibleAddresses: parsedParams.fungibleAddresses.join(",") } : {}),
+      ...(parsedParams.currency ? { currency: parsedParams.currency } : {}),
+    },
+  });
+
+  return PortfolioResponseSchema.parse(result);
 }

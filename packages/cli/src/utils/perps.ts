@@ -30,7 +30,7 @@ export function createAnonymousPerpsClient(context: ToolContext): PerpsClient {
 export async function createPerpsClient(
   context: ToolContext,
   walletId: string,
-  derivationIndex?: number,
+  derivationIndex: number,
 ): Promise<PerpsClient> {
   const evmAddress = await getEthereumAddress(context, walletId, derivationIndex);
 

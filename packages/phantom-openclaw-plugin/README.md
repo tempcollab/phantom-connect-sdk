@@ -96,6 +96,14 @@ Supported optional config keys mirror the MCP server environment surface used by
 
 The plugin exposes the following tools from the Phantom MCP Server:
 
+### `phantom_logout`
+
+Log out by clearing the stored session and credentials from disk. Does not require an active session. The next tool call will require re-authentication.
+
+**Parameters:** None
+
+**Response:** `{ "success": true }`
+
 ### `get_connection_status`
 
 Lightweight local check of the wallet connection state. No network call — reads session state only. Use this first to confirm the user is authenticated.
@@ -123,6 +131,37 @@ Retrieve wallet addresses for all supported blockchain chains (Solana, Ethereum,
 Get all fungible token balances for the authenticated wallet with live USD prices and 24h price change.
 
 **Parameters:** None
+
+### `get_token_price`
+
+Fetch the current price of a specific token by its contract or mint address. Pass `address='native'` for the chain's native token (SOL, ETH, MATIC, etc.).
+
+**Parameters:**
+
+- `address` (string, required): Token contract/mint address, or `'native'` for the chain's native token
+- `chain` (string, required): Chain the token lives on — one of `solana`, `ethereum`, `base`, `polygon`, `arbitrum`, `bitcoin`, `sui`, `monad`
+- `currency` (string, optional): ISO 4217 currency code (default: `"USD"`)
+
+**Example (native SOL price):**
+
+```json
+{
+  "address": "native",
+  "chain": "solana"
+}
+```
+
+**Example (USDC on Solana):**
+
+```json
+{
+  "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "chain": "solana",
+  "currency": "USD"
+}
+```
+
+**Response:** `{ name, symbol, caip19, price, priceChange24h, currency, lastUpdatedAt?, marketCap }`
 
 ### `send_solana_transaction`
 
@@ -351,7 +390,7 @@ For EVM swaps, use `get_token_allowance` when you need to check whether the sell
 
 ### Perpetuals Tools (Hyperliquid)
 
-The plugin exposes 12 tools for perpetuals trading on Hyperliquid via Phantom's backend. All signing uses the wallet's EVM key (Arbitrum EIP-712).
+The plugin exposes 13 tools for perpetuals trading on Hyperliquid via Phantom's backend. All signing uses the wallet's EVM key (Arbitrum EIP-712).
 
 #### Read-only
 
@@ -464,6 +503,28 @@ Bridges USDC from the Hyperliquid perp account to an external chain (Solana, Bas
 - `buyToken` (string, optional): CAIP-19 token to receive; defaults to USDC on the destination chain
 - `walletId` (string, optional), `derivationIndex` (number, optional, default 0)
 
+##### `withdraw_from_hyperliquid_spot`
+
+Bridges USDC from the Hyperliquid **spot** account to an external chain (Solana, Base, Ethereum, Arbitrum, Polygon) via the Relay V2 bridge. Funds must be in the spot account — use `withdraw_from_perps` first if they are in the perp account. Use `execute: false` (default) to preview the quote before broadcasting.
+
+**Parameters:**
+
+- `amountUsdc` (string, required): Amount of USDC to bridge out (e.g. `"8.0"`)
+- `destinationChainId` (string, required): Destination chain CAIP-2 ID (e.g. `"solana:mainnet"`, `"eip155:8453"`)
+- `buyToken` (string, optional): CAIP-19 token to receive on the destination chain; defaults to USDC
+- `execute` (boolean, optional): If `false` (default), returns a quote only. If `true`, signs and broadcasts immediately.
+- `walletId` (string, optional), `derivationIndex` (number, optional, default 0)
+
+**Example:**
+
+```json
+{ "amountUsdc": "50.0", "destinationChainId": "solana:mainnet", "execute": true }
+```
+
+**Response (quote only):** `{ quote: { requestId, details: { amountIn, amountOut, amountOutUsd } } }`
+
+**Response (executed):** `{ status, txHash?, ... }`
+
 #### Typical Agent Workflow
 
 ```text
@@ -475,7 +536,8 @@ Bridges USDC from the Hyperliquid perp account to an external chain (Solana, Bas
 6. open_perp_position        → open long at 10x leverage
 7. get_perp_positions        → monitor position
 8. close_perp_position       → close when done
-9. withdraw_from_perps       → bridge USDC back to Solana (or any chain)
+9. withdraw_from_perps              → bridge USDC from perp account back to Solana (or any chain)
+   (or withdraw_from_hyperliquid_spot → bridge USDC from spot account back to an external chain)
 ```
 
 ---

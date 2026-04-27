@@ -37,10 +37,9 @@ phantom mcp add
 ### Authentication
 
 ```bash
-phantom login
+phantom login   # Authenticate with Phantom. Use this to log in for the first time, switch accounts, or refresh an expired session.
+phantom logout  # Clear the stored session and credentials from disk. The next command will require re-authentication.
 ```
-
-Authenticate with Phantom. Use this to log in for the first time, switch accounts, or refresh an expired session.
 
 ### Wallet
 
@@ -74,6 +73,7 @@ phantom transfer   # Transfer tokens between wallets
 phantom buy        # Buy a token with another token (swap)
 phantom simulate   # Simulate a transaction before executing
 phantom pay        # Pay for API access using tokens
+phantom price      # Look up the current price of a token by address and chain
 ```
 
 ### Perpetuals (Hyperliquid)
@@ -93,41 +93,44 @@ phantom perps leverage         # Update leverage
 phantom perps transfer         # Transfer spot → perps
 phantom perps deposit          # Bridge tokens into Hyperliquid
 phantom perps withdraw         # Bridge USDC from perps to external chain
+phantom perps withdraw-hl-spot # Bridge USDC from Hyperliquid spot to external chain
 ```
 
 ## MCP Tools
 
-When running as an MCP server (`phantom --mcp`), all commands are exposed as MCP tools. Tool names follow the pattern `<group>_<command>` (e.g. `wallet_status`, `perps_markets`). Top-level commands use their command name directly (e.g. `login`, `buy`, `transfer`).
+When running as an MCP server (`phantom --mcp`), all commands are exposed as MCP tools. Tool names follow the pattern `<group>_<command>` (e.g. `wallet_status`, `perps_markets`). Top-level commands typically use their command name directly (e.g. `phantom_login`, `buy`, `transfer`), though some use a more descriptive MCP name (e.g. `get_token_price` for `phantom price`).
 
-| Tool               | Description                              |
-| ------------------ | ---------------------------------------- |
-| `login`            | Authenticate with Phantom                |
-| `wallet_status`    | Check connection status                  |
-| `wallet_addresses` | Get wallet addresses                     |
-| `wallet_balances`  | Get token balances                       |
-| `wallet_rebalance` | Rebalance portfolio                      |
-| `solana_send`      | Send a Solana transaction                |
-| `solana_sign`      | Sign a Solana message                    |
-| `evm_send`         | Send an EVM transaction                  |
-| `evm_sign`         | Sign an EVM personal message             |
-| `evm_sign-typed`   | Sign EVM typed data                      |
-| `evm_allowance`    | Get ERC-20 allowance                     |
-| `transfer`         | Transfer tokens                          |
-| `buy`              | Buy/swap tokens                          |
-| `simulate`         | Simulate a transaction                   |
-| `pay`              | Pay for API access                       |
-| `perps_markets`    | List perp markets                        |
-| `perps_account`    | Get perps account                        |
-| `perps_positions`  | Get open positions                       |
-| `perps_orders`     | Get open orders                          |
-| `perps_history`    | Get trade history                        |
-| `perps_open`       | Open a position                          |
-| `perps_close`      | Close a position                         |
-| `perps_cancel`     | Cancel an order                          |
-| `perps_leverage`   | Update leverage                          |
-| `perps_transfer`   | Transfer spot → perps                    |
-| `perps_deposit`    | Bridge tokens to Hyperliquid             |
-| `perps_withdraw`   | Bridge USDC from perps to external chain |
+| Tool                             | Description                                         |
+| -------------------------------- | --------------------------------------------------- |
+| `phantom_login`                  | Authenticate with Phantom                           |
+| `wallet_status`                  | Check connection status                             |
+| `wallet_addresses`               | Get wallet addresses                                |
+| `wallet_balances`                | Get token balances                                  |
+| `wallet_rebalance`               | Rebalance portfolio                                 |
+| `get_token_price`                | Look up token price by address and chain            |
+| `solana_send`                    | Send a Solana transaction                           |
+| `solana_sign`                    | Sign a Solana message                               |
+| `evm_send`                       | Send an EVM transaction                             |
+| `evm_sign`                       | Sign an EVM personal message                        |
+| `evm_sign-typed`                 | Sign EVM typed data                                 |
+| `evm_allowance`                  | Get ERC-20 allowance                                |
+| `transfer`                       | Transfer tokens                                     |
+| `buy`                            | Buy/swap tokens                                     |
+| `simulate`                       | Simulate a transaction                              |
+| `pay`                            | Pay for API access                                  |
+| `perps_markets`                  | List perp markets                                   |
+| `perps_account`                  | Get perps account                                   |
+| `perps_positions`                | Get open positions                                  |
+| `perps_orders`                   | Get open orders                                     |
+| `perps_history`                  | Get trade history                                   |
+| `perps_open`                     | Open a position                                     |
+| `perps_close`                    | Close a position                                    |
+| `perps_cancel`                   | Cancel an order                                     |
+| `perps_leverage`                 | Update leverage                                     |
+| `perps_transfer`                 | Transfer spot → perps                               |
+| `perps_deposit`                  | Bridge tokens to Hyperliquid                        |
+| `perps_withdraw`                 | Bridge USDC from perps to external chain            |
+| `withdraw_from_hyperliquid_spot` | Bridge USDC from Hyperliquid spot to external chain |
 
 ## Configuration
 

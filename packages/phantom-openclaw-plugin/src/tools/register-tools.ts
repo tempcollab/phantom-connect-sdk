@@ -4,7 +4,7 @@
 
 import { Type } from "@sinclair/typebox";
 import type { TSchema } from "@sinclair/typebox";
-import { SessionManager, tools, type PluginConfig, type ToolContext } from "@phantom/cli";
+import { loginTool, logoutTool, SessionManager, tools, type PluginConfig, type ToolContext } from "@phantom/cli";
 import { PhantomApiClient } from "@phantom/phantom-api-client";
 import type { OpenClawApi } from "../client/types.js";
 import type { PluginSession } from "../session.js";
@@ -390,7 +390,7 @@ export function registerPhantomTools(api: OpenClawApi, pluginSession: PluginSess
           const normalized = addProviderAttribution(
             addPluginVersion({
               connected: false,
-              reason: "No active session found. Call phantom_login or another wallet tool to authenticate.",
+              reason: `No active session found. Call ${loginTool.name} or another wallet tool to authenticate.`,
             }),
           );
           return {
@@ -410,7 +410,13 @@ export function registerPhantomTools(api: OpenClawApi, pluginSession: PluginSess
         };
 
         try {
-          if (mcpTool.name === "phantom_login") {
+          if (mcpTool.name === logoutTool.name) {
+            await pluginSession.logout();
+            const normalized = addProviderAttribution({ success: true, message: "Logged out successfully." });
+            return {
+              content: [{ type: "text" as const, text: JSON.stringify(normalized, null, 2) }],
+            };
+          } else if (mcpTool.name === loginTool.name) {
             if (displayMode === "browser") {
               await pluginSession.resetSession({ openBrowser: true });
             } else {
@@ -474,7 +480,7 @@ export function registerPhantomTools(api: OpenClawApi, pluginSession: PluginSess
           }
 
           const result =
-            mcpTool.name === "phantom_login"
+            mcpTool.name === loginTool.name
               ? {
                   success: true,
                   message: "Authentication successful.",

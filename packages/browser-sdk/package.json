@@ -1,6 +1,6 @@
 {
   "name": "@phantom/browser-sdk",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Browser SDK for Phantom Wallet",
   "repository": {
     "type": "git",

@@ -14,9 +14,9 @@ import {
   _getOrCreateAppWallet,
   type Auth2StamperWithKeyManagement,
 } from "@phantom/auth2";
-import { Logger } from "../utils/logger";
-import { DCRClient } from "./dcr";
-import type { DCRClientConfig } from "../session/types";
+import { Logger } from "../utils/logger.js";
+import { DCRClient } from "./dcr.js";
+import type { DCRClientConfig } from "../session/types.js";
 
 type DeviceAuthorizationResponse = {
   device_code: string;

@@ -32,9 +32,10 @@ The server exposes the following MCP tools:
 
 ### Authentication
 
-| Tool    | Description                                                                                                       |
-| ------- | ----------------------------------------------------------------------------------------------------------------- |
-| `login` | Authenticate with Phantom. Use this to log in for the first time, switch accounts, or refresh an expired session. |
+| Tool             | Description                                                                                                       |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `phantom_login`  | Authenticate with Phantom. Use this to log in for the first time, switch accounts, or refresh an expired session. |
+| `phantom_logout` | Clear the stored session and credentials from disk. The next tool call will require re-authentication.            |
 
 ### Wallet
 
@@ -63,31 +64,33 @@ The server exposes the following MCP tools:
 
 ### Tokens & Swaps
 
-| Tool       | Description                                              |
-| ---------- | -------------------------------------------------------- |
-| `transfer` | Transfer tokens between wallets on Solana or EVM chains. |
-| `buy`      | Buy a token with another token (swap).                   |
-| `simulate` | Simulate a transaction before executing it.              |
-| `pay`      | Pay for API access using tokens.                         |
+| Tool              | Description                                                  |
+| ----------------- | ------------------------------------------------------------ |
+| `transfer`        | Transfer tokens between wallets on Solana or EVM chains.     |
+| `buy`             | Buy a token with another token (swap).                       |
+| `simulate`        | Simulate a transaction before executing it.                  |
+| `pay`             | Pay for API access using tokens.                             |
+| `get_token_price` | Fetch the current price of a token by its address and chain. |
 
 ### Perpetuals (Hyperliquid)
 
 See [PERPS.md](./PERPS.md) for full perpetuals documentation.
 
-| Tool              | Description                                                     |
-| ----------------- | --------------------------------------------------------------- |
-| `perps_markets`   | List available perpetual markets with prices and funding rates. |
-| `perps_account`   | Get your Hyperliquid perps account summary.                     |
-| `perps_positions` | Get open perpetual positions.                                   |
-| `perps_orders`    | Get open perpetual orders.                                      |
-| `perps_history`   | Get perpetual trade history.                                    |
-| `perps_open`      | Open a perpetual position.                                      |
-| `perps_close`     | Close a perpetual position.                                     |
-| `perps_cancel`    | Cancel a perpetual order.                                       |
-| `perps_leverage`  | Update leverage for a market.                                   |
-| `perps_transfer`  | Transfer funds between spot and perps accounts.                 |
-| `perps_deposit`   | Bridge tokens into your Hyperliquid spot account.               |
-| `perps_withdraw`  | Bridge USDC from perps directly to an external chain.           |
+| Tool                             | Description                                                                  |
+| -------------------------------- | ---------------------------------------------------------------------------- |
+| `perps_markets`                  | List available perpetual markets with prices and funding rates.              |
+| `perps_account`                  | Get your Hyperliquid perps account summary.                                  |
+| `perps_positions`                | Get open perpetual positions.                                                |
+| `perps_orders`                   | Get open perpetual orders.                                                   |
+| `perps_history`                  | Get perpetual trade history.                                                 |
+| `perps_open`                     | Open a perpetual position.                                                   |
+| `perps_close`                    | Close a perpetual position.                                                  |
+| `perps_cancel`                   | Cancel a perpetual order.                                                    |
+| `perps_leverage`                 | Update leverage for a market.                                                |
+| `perps_transfer`                 | Transfer funds between spot and perps accounts.                              |
+| `perps_deposit`                  | Bridge tokens into your Hyperliquid perps account.                           |
+| `perps_withdraw`                 | Bridge USDC from perps directly to an external chain.                        |
+| `withdraw_from_hyperliquid_spot` | Bridge USDC from Hyperliquid spot to an external chain via the Relay bridge. |
 
 ## Configuration
 

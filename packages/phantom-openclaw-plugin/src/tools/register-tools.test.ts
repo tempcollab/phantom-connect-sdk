@@ -58,6 +58,7 @@ function registerToolsForTest() {
   const session = {
     initialize: jest.fn().mockResolvedValue(undefined),
     resetSession: jest.fn().mockResolvedValue(undefined),
+    logout: jest.fn().mockResolvedValue(undefined),
     isInitialized: jest.fn().mockReturnValue(false),
     startTextModeAuthentication: jest.fn().mockResolvedValue({
       status: "pending",
@@ -69,7 +70,7 @@ function registerToolsForTest() {
   } as unknown as PluginSession;
 
   registerPhantomTools(api, session, {});
-  return { registeredTools, registeredContexts };
+  return { registeredTools, registeredContexts, session };
 }
 
 function findToolSchema(registeredTools: RegisteredTool[], toolName: string): TSchema {
@@ -189,6 +190,25 @@ describe("registerPhantomTools schema conversion", () => {
       }),
     );
     expect(mockSetGetHeaders).toHaveBeenCalledTimes(1);
+  });
+
+  it("phantom_logout calls pluginSession.logout() and returns success without requiring auth", async () => {
+    const { registeredTools, session } = registerToolsForTest();
+    const logoutTool = registeredTools.find(tool => tool.name === "phantom_logout");
+
+    expect(logoutTool).toBeDefined();
+
+    const response = await logoutTool!.execute("tool-call-logout", {});
+    const parsed = JSON.parse((response as { content: Array<{ text: string }> }).content[0].text);
+
+    expect(response.isError).toBeUndefined();
+    expect(parsed).toEqual({
+      success: true,
+      message: "Logged out successfully.",
+      provider: "phantom",
+    });
+    expect((session as unknown as { logout: jest.Mock }).logout).toHaveBeenCalledTimes(1);
+    expect((session as unknown as { initialize: jest.Mock }).initialize).not.toHaveBeenCalled();
   });
 
   it("returns a pending authentication prompt for phantom_login in text mode", async () => {

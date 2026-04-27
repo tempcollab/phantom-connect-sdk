@@ -115,15 +115,21 @@ export class Auth2Stamper implements Auth2StamperWithKeyManagement {
     this._tokenExpiresAt = expiresInMs != null ? Date.now() + expiresInMs : null;
 
     const existing = await this.storage.load();
-    if (existing) {
-      await this.storage.save({
-        ...existing,
-        accessToken,
-        idType,
-        refreshToken,
-        tokenExpiresAt: this._tokenExpiresAt ?? undefined,
-      });
+    const keyPair = existing?.keyPair ?? this._keyPair;
+    const keyInfo = existing?.keyInfo ?? this._keyInfo;
+
+    if (!keyPair || !keyInfo) {
+      throw new Error("Auth2Stamper key pair not initialized. Call init() first.");
     }
+
+    await this.storage.save({
+      keyPair,
+      keyInfo,
+      accessToken,
+      idType,
+      refreshToken,
+      tokenExpiresAt: this._tokenExpiresAt ?? undefined,
+    });
   }
 
   /**

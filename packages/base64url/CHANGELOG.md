@@ -1,5 +1,11 @@
 # @phantom/base64url
 
+## 2.0.2
+
+### Patch Changes
+
+- 1e542fb: upgrade packages, improving commands
+
 ## 2.0.1
 
 ### Patch Changes

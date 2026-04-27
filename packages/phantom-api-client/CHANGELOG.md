@@ -1,5 +1,11 @@
 # @phantom/phantom-api-client
 
+## 1.2.1
+
+### Patch Changes
+
+- 1e542fb: upgrade packages, improving commands
+
 ## 1.2.0
 
 ### Minor Changes

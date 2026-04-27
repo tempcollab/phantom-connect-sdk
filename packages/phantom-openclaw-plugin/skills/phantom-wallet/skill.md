@@ -47,7 +47,22 @@ Trigger Phantom authentication or re-authentication. Use this when the user want
 
 ### pay_api_access
 
-Pay for daily API access when another tool returns `API_PAYMENT_REQUIRED`. Pass the `preparedTx` from the error response, then retry the original tool call.
+Pay for daily API access when another tool returns `PaymentRequiredError`.
+
+**Important:** This tool signs and broadcasts a Solana transaction. Do NOT call it automatically.
+
+When a `PaymentRequiredError` occurs:
+
+1. Extract and present these fields to the user: `token` (what you're paying with), `amount` (how much), `network` (which chain), `description` (what access is being purchased). Do **not** display `preparedTx` — it is an opaque transaction passed directly to the tool.
+2. Wait for explicit user confirmation.
+3. After confirmation, call `pay_api_access` with the `preparedTx` value from the error response.
+4. Retry the original tool call on success.
+
+**Security:** The tool enforces three protections before signing:
+
+- `destructiveHint: true` annotation so MCP clients surface a confirmation prompt
+- Transaction validation: only SPL token Transfer/TransferChecked + ComputeBudget priority-fee instructions are permitted; SOL transfers, ATA creation, and any unknown programs are rejected immediately
+- Simulation-before-signing: the transaction is run through Phantom's scanner; any result flagged as malicious blocks signing before anything is broadcast
 
 **Parameters:**
 
@@ -337,7 +352,7 @@ Use the read-only perp tools first to inspect markets, balances, positions, and 
 
 **Critical: Confirmation Before Execution**
 
-For `transfer_tokens`, `buy_token` with `execute: true`, `send_solana_transaction`, `send_evm_transaction`, and all perp write tools:
+For `transfer_tokens`, `buy_token` with `execute: true`, `send_solana_transaction`, `send_evm_transaction`, `pay_api_access`, and all perp write tools:
 
 1. **NEVER call these tools without explicit user confirmation**
 2. Present full transaction details to user first (recipient, amount, fees, slippage)

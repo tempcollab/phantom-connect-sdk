@@ -266,6 +266,15 @@ export class SessionManager {
   }
 
   /**
+   * Clears the stored session and in-memory state without re-authenticating.
+   * The next tool call or initialize() will trigger a fresh auth flow.
+   */
+  async logout(): Promise<void> {
+    this.logger.info("Logging out");
+    await this.clearSession();
+  }
+
+  /**
    * Resets the session by clearing stored data and re-authenticating
    *
    * @throws Error if authentication fails
@@ -273,15 +282,21 @@ export class SessionManager {
   async resetSession(displayOptions?: DeviceCodeAuthDisplayOptions): Promise<void> {
     this.logger.info("Resetting session");
 
-    // Clear stored session
-    this.storage.delete();
-    await this.clearDeviceCodeAuthState();
-    this.session = null;
-    this.client = null;
-    this.stamper = null;
+    await this.clearSession();
 
     // Re-authenticate
     await this.authenticate(displayOptions);
+  }
+
+  private async clearSession(): Promise<void> {
+    try {
+      this.storage.deleteStrict();
+      await this.clearDeviceCodeAuthState();
+    } finally {
+      this.session = null;
+      this.client = null;
+      this.stamper = null;
+    }
   }
 
   /**
@@ -396,7 +411,11 @@ export class SessionManager {
           "device-code session is missing org/wallet metadata — deleting stale session and re-authenticating",
         );
         this.storage.delete();
-        await this.clearDeviceCodeAuthState();
+        try {
+          await this.clearDeviceCodeAuthState();
+        } catch {
+          // Best-effort: cleanup errors don't block re-authentication
+        }
         this.session = null;
         this.client = null;
         await this.authenticate();
@@ -458,7 +477,11 @@ export class SessionManager {
         "device-code auth2 stamper state is missing tokens — deleting stale session and re-authenticating",
       );
       this.storage.delete();
-      await this.clearDeviceCodeAuthState();
+      try {
+        await this.clearDeviceCodeAuthState();
+      } catch {
+        // Best-effort: cleanup errors don't block re-authentication
+      }
       this.session = null;
       this.client = null;
       await this.authenticate();
@@ -497,8 +520,8 @@ export class SessionManager {
   private async clearDeviceCodeAuthState(): Promise<void> {
     try {
       await new NodeFileAuth2StamperStorage(this.storage.sessionDir).clear();
-    } catch {
-      // Ignore auth2 storage cleanup errors during reset/reauth.
+    } catch (error) {
+      throw new Error(`Failed to delete auth2-stamper.json: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 }

@@ -225,6 +225,26 @@ describe("Auth2Stamper", () => {
       expect(stamper.auth2Token?.sub).toBe("user-abc");
     });
 
+    it("persists tokens using in-memory key state when storage.load() returns null", async () => {
+      const storage = makeStorage();
+      const stamper = new Auth2Stamper(storage);
+
+      await stamper.init();
+      storage.load.mockResolvedValueOnce(null);
+
+      await stamper.setTokens({ accessToken: "access-2", idType: "Bearer", refreshToken: "refresh-2" });
+
+      expect(storage.save).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          keyPair: mockKeyPair,
+          keyInfo: stamper.getKeyInfo(),
+          accessToken: "access-2",
+          idType: "Bearer",
+          refreshToken: "refresh-2",
+        }),
+      );
+    });
+
     it("auth2Token returns null after clear()", async () => {
       const storage = makeStorage(STORED_RECORD);
       const stamper = new Auth2Stamper(storage);
@@ -321,7 +341,7 @@ describe("Auth2Stamper", () => {
       expect((stamper as any)._refreshToken).toBeNull();
     });
 
-    it("does not call storage.save when no existing record is found", async () => {
+    it("persists tokens even when no existing stored record is found", async () => {
       const storage = makeStorage();
       const stamper = new Auth2Stamper(storage);
 
@@ -332,7 +352,14 @@ describe("Auth2Stamper", () => {
 
       await stamper.setTokens({ accessToken: "t", idType: "Bearer" });
 
-      expect(storage.save).not.toHaveBeenCalled();
+      expect(storage.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          keyPair: mockKeyPair,
+          keyInfo: stamper.getKeyInfo(),
+          accessToken: "t",
+          idType: "Bearer",
+        }),
+      );
     });
   });
 

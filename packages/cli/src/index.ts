@@ -5,28 +5,29 @@ import { PhantomApiClient } from "@phantom/phantom-api-client";
 import { ANALYTICS_HEADERS, NetworkId } from "@phantom/constants";
 import { AddressType } from "@phantom/client";
 import { base64urlEncode } from "@phantom/base64url";
-import { loginCommand } from "./commands/login.js";
-import { walletCli } from "./commands/wallet/index.js";
-import { solanaCli } from "./commands/solana/index.js";
-import { evmCli } from "./commands/evm/index.js";
-import { transferCommand } from "./commands/transfer.js";
-import { buyCommand } from "./commands/buy.js";
-import { simulateCommand } from "./commands/simulate.js";
-import { payCommand } from "./commands/pay.js";
-import { perpsCli } from "./commands/perps/index.js";
+import { loginCommand } from "./actions/login.js";
+import { logoutCommand } from "./actions/logout.js";
+import { walletCli } from "./commands/wallet.js";
+import { solanaCli } from "./commands/solana.js";
+import { evmCli } from "./commands/evm.js";
+import { transferCommand } from "./actions/transfer-tokens.js";
+import { buyCommand } from "./actions/buy-token.js";
+import { simulateCommand } from "./actions/simulate-transaction.js";
+import { payCommand } from "./actions/pay-api-access.js";
+import { perpsCli } from "./commands/perps.js";
+import { tokenPriceCommand } from "./actions/get-token-price.js";
 import * as packageJson from "../package.json";
 import { varsSchema } from "./vars.js";
+import { tools } from "./tools/index.js";
+import { getWalletAddressesTool } from "./actions/get-wallet-addresses.js";
+import { getConnectionStatusTool } from "./actions/get-connection-status.js";
 
 const MCP_INSTRUCTIONS = [
   "This is the Phantom Wallet MCP Server. Phantom is an enterprise-grade non-custodial crypto wallet supporting Solana, Ethereum, Bitcoin, Base, Polygon, Sui, and Monad. " +
     "Authentication uses Phantom Connect (OAuth with Google, Apple, or Phantom extension). Sessions persist across restarts. " +
-    "Available tools: get_wallet_addresses (check connection & get addresses), get_connection_status (lightweight connection check), " +
-    "get_token_balances (check all token balances + USD prices via Phantom portfolio API), " +
-    "transfer_tokens (SOL/SPL transfers on Solana), buy_token (Solana token swaps via Phantom routing), " +
-    "sign_transaction (sign and broadcast pre-built transactions), sign_message (sign UTF-8 messages). " +
-    "Always call get_wallet_addresses or get_connection_status first to confirm the user is authenticated. " +
-    "Solana transactions require a small SOL balance (~0.000005 SOL) for network fees. " +
-    "If an auth error occurs, re-authentication is triggered and the agent should retry after the user completes browser sign-in.",
+    `Always call ${getWalletAddressesTool.name} or ${getConnectionStatusTool.name} first to confirm the user is authenticated. ` +
+    "If an auth error occurs, re-authentication is triggered and the agent should retry after the user completes browser sign-in. ",
+  "Available tools: " + tools.map(tool => tool.name).join(", "),
 ];
 
 const STATIC_HEADERS: Record<string, string> = {
@@ -94,9 +95,9 @@ export const cli = Cli.create("phantom", {
 });
 
 cli.use(async (c, next) => {
-  // The login command manages its own auth via resetSession() — skip initialize()
-  // and session-dependent setup so the middleware doesn't trigger a redundant auth flow.
-  if (c.command !== "login" && !c.var.manager.isInitialized()) {
+  // Login manages auth via resetSession(), and logout clears state directly —
+  // skip initialize() for both so middleware doesn't trigger unnecessary auth flow.
+  if (![loginCommand.name, logoutCommand.name].includes(c.command) && !c.var.manager.isInitialized()) {
     await c.var.manager.initialize();
   }
 
@@ -113,6 +114,7 @@ cli.use(async (c, next) => {
 });
 
 cli.command(loginCommand);
+cli.command(logoutCommand);
 cli.command(walletCli);
 cli.command(solanaCli);
 cli.command(evmCli);
@@ -121,16 +123,18 @@ cli.command(buyCommand);
 cli.command(simulateCommand);
 cli.command(payCommand);
 cli.command(perpsCli);
+cli.command(tokenPriceCommand);
 
 export default cli;
 
 // Re-exports for consumers that previously imported from @phantom/mcp-server
+export { loginTool } from "./actions/login.js";
+export { logoutTool } from "./actions/logout.js";
 export { SessionManager } from "./session/manager.js";
 export type { SessionData } from "./session/types.js";
-export type { SessionManagerOptions } from "./session/manager.js";
 export type { DeviceCodeAuthDisplayOptions } from "./auth/DeviceCodeAuthProvider.js";
 export type { PhantomClient } from "@phantom/client";
-export { tools, getTool, getToolNames } from "./tools/index.js";
-export type { ToolHandler, ToolContext, ToolInputSchema } from "./tools/types.js";
+export { tools } from "./tools/index.js";
+export type { ToolContext } from "./tools/types.js";
 export { PluginConfigSchema, PluginConfigJsonSchema } from "./plugin-config.js";
 export type { PluginConfig } from "./plugin-config.js";

@@ -356,8 +356,63 @@ describe("SessionManager", () => {
     mockDeviceCodeAuthProvider.authenticate.mockResolvedValue(createDeviceCodeResult());
     await manager.resetSession();
 
-    expect(mockStorage.delete).toHaveBeenCalled();
+    expect(mockStorage.deleteStrict).toHaveBeenCalled();
     expect(mockDeviceCodeAuthProvider.authenticate).toHaveBeenCalledTimes(1);
     expect(NodeFileAuth2StamperStorage).toHaveBeenCalledWith("/tmp/test-phantom-mcp");
+  });
+
+  describe("logout()", () => {
+    it("clears stored session and device-code auth state", async () => {
+      const session = createDeviceCodeSession();
+      mockStorage.load.mockReturnValue(session);
+      mockStorage.isExpired.mockReturnValue(false);
+
+      const manager = new SessionManager({ authFlow: "device-code" });
+      await manager.initialize();
+      jest.clearAllMocks();
+
+      await manager.logout();
+
+      expect(mockStorage.deleteStrict).toHaveBeenCalled();
+      expect(NodeFileAuth2StamperStorage).toHaveBeenCalledWith("/tmp/test-phantom-mcp");
+      const stamperInstance = (NodeFileAuth2StamperStorage as jest.Mock).mock.results[0].value;
+      expect(stamperInstance.clear).toHaveBeenCalled();
+    });
+
+    it("does not re-authenticate after clearing", async () => {
+      const session = createDeviceCodeSession();
+      mockStorage.load.mockReturnValue(session);
+      mockStorage.isExpired.mockReturnValue(false);
+
+      const manager = new SessionManager({ authFlow: "device-code" });
+      await manager.initialize();
+      jest.clearAllMocks();
+
+      await manager.logout();
+
+      expect(mockDeviceCodeAuthProvider.authenticate).not.toHaveBeenCalled();
+      expect(mockOAuthFlow.authenticate).not.toHaveBeenCalled();
+    });
+
+    it("leaves isInitialized() false after logout", async () => {
+      const session = createSsoSession();
+      mockStorage.load.mockReturnValue(session);
+      mockStorage.isExpired.mockReturnValue(false);
+
+      const manager = new SessionManager({ authFlow: "sso" });
+      await manager.initialize();
+      expect(manager.isInitialized()).toBe(true);
+
+      await manager.logout();
+
+      expect(manager.isInitialized()).toBe(false);
+    });
+
+    it("is safe to call when no session is loaded", async () => {
+      const manager = new SessionManager();
+
+      await expect(manager.logout()).resolves.toBeUndefined();
+      expect(mockStorage.deleteStrict).toHaveBeenCalled();
+    });
   });
 });

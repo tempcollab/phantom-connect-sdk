@@ -1,0 +1,174 @@
+import { z } from "incur";
+import { varsSchema } from "../vars.js";
+import { PaymentRequiredSchema, RateLimitedSchema, wrapWithPaymentHandling } from "./payment.js";
+import type { PaymentRequiredResult, RateLimitedResult } from "./payment.js";
+import type { ToolAnnotations, ToolHandler, ToolInputSchema } from "../tools/types.js";
+
+/**
+ * Defines a Phantom CLI action that is automatically exposed as both an `incur` CLI command
+ * and an MCP tool handler from a single declaration.
+ *
+ * @param description - Shown to the LLM agent as the tool description. Be specific: include
+ *   what the action does, any required preconditions, what a success response looks like, and
+ *   important defaults. This same string becomes the CLI `--help` description.
+ *
+ * @param options - Zod schema for the action's input parameters. Every field must have
+ *   a `.describe()` call. Use `z.coerce.number()` for numeric CLI flags (CLI args arrive as
+ *   strings), and `z.stringbool()` for boolean flags that may be passed as `"true"/"false"`.
+ *   Use `WalletSchema.safeExtend({...})` from `utils/schemas.ts` instead of `z.object({...})`
+ *   when the action needs wallet access.
+ *
+ * @param output - Zod schema for the **success** return type only. Always define a concrete
+ *   schema — never use `z.any()`. Do not include `PaymentRequiredSchema` or `RateLimitedSchema`
+ *   here; `createAction` automatically unions them in for both the CLI command output and the
+ *   MCP tool handler:
+ *   ```
+ *   effective output = output | PaymentRequiredSchema | RateLimitedSchema
+ *   ```
+ *   At runtime, `PaymentRequiredError` and `RateLimitError` thrown inside `run` are caught by
+ *   `wrapWithPaymentHandling` and converted to the corresponding structured result objects
+ *   before they reach callers — they never surface as thrown errors.
+ *
+ * @param mcp - MCP registration config.
+ *   - `command`: globally unique snake_case tool name (e.g. `"get_perp_account"`). Use a
+ *     descriptive name — MCP tools are flat, so prefer `"get_perp_account"` over `"account"`.
+ *   - `annotations.readOnlyHint`: `true` only for pure reads with no side effects.
+ *   - `annotations.destructiveHint`: `true` for irreversible writes (sends transactions, etc.).
+ *   - `annotations.openWorldHint`: `true` when the action makes network / external calls.
+ *
+ * @param run - Async implementation. Receives `{ options, var: context }` where `options` is
+ *   the parsed + validated input and `context` exposes `logger`, `apiClient`, and `manager`
+ *   (use `manager.getClient()` for the PhantomClient and `manager.getSession()` for wallet/org
+ *   IDs). Auth expiry is caught automatically — no manual handling needed.
+ *
+ *   The declared return type of `run` is `Promise<output | PaymentRequiredResult | RateLimitedResult>`.
+ *   In practice `run` returns only the success shape, but the wider union is permitted so that
+ *   delegating actions (e.g. `deposit_to_hyperliquid` calling `buyTokenTool.handler()`) can
+ *   forward an already-converted payment result without a cast.
+ *
+ * @returns `{ command, tool }` — pass `command` to `Cli.create()` and `tool` to the MCP
+ *   `tools` array in `src/tools/index.ts`. Both surfaces expose the full
+ *   `output | PaymentRequired | RateLimited` union to callers.
+ *
+ * @example
+ * ```typescript
+ * const GetPriceSchema = WalletSchema.safeExtend({
+ *   symbol: z.string().describe("Ticker symbol, e.g. BTC"),
+ *   decimals: z.coerce.number().default(2).describe("Decimal places to display (default: 2)"),
+ *   verbose: z.stringbool().default(false).describe("If true, include raw market data"),
+ * });
+ *
+ * const GetPriceOutputSchema = z.object({
+ *   symbol: z.string(),
+ *   priceUsd: z.string(),
+ * });
+ *
+ * const getPriceAction = createAction({
+ *   description: "Phantom Wallet — Returns the current USD price for a symbol.",
+ *   options: GetPriceSchema,
+ *   output: GetPriceOutputSchema,
+ *   mcp: {
+ *     command: "get_price",
+ *     annotations: {
+ *       readOnlyHint: true,
+ *       destructiveHint: false,
+ *       openWorldHint: true,
+ *     },
+ *   },
+ *   run: async ({ options: params, var: context }) => {
+ *     const { logger } = context;
+ *     const walletId = params.walletId(context.manager);
+ *     logger.info(`Fetching price for ${params.symbol}`);
+ *     // ... fetch logic ...
+ *     return { symbol: params.symbol, priceUsd: "42000.00" };
+ *   },
+ * });
+ *
+ * export const getPriceCommand = Cli.create("price", getPriceAction.command);
+ * export const getPriceTool = getPriceAction.tool;
+ * ```
+ */
+export function createAction<
+  const description extends string,
+  const options extends z.ZodObject<z.ZodRawShape>,
+  const output extends z.ZodType,
+  const mcp extends {
+    command: string;
+    annotations: ToolAnnotations;
+  },
+>({
+  description,
+  options,
+  output,
+  mcp,
+  run,
+}: {
+  description: description;
+  options: options;
+  output: output;
+  mcp: mcp;
+  run: (args: {
+    options: z.output<options>;
+    var: z.output<typeof varsSchema>;
+  }) => Promise<z.output<output> | PaymentRequiredResult | RateLimitedResult>;
+}) {
+  const wrappedRun = async (args: {
+    options: z.output<options>;
+    var: z.output<typeof varsSchema>;
+  }): Promise<z.output<output> | PaymentRequiredResult | RateLimitedResult> => {
+    try {
+      return await wrapWithPaymentHandling(() => run(args));
+    } catch (err) {
+      if (!isAuthError(err)) {
+        throw err;
+      }
+      await args.var.manager.resetSession();
+      throw new Error("AUTH_EXPIRED: Session expired or revoked. Call phantom_login to re-authenticate, then retry.");
+    }
+  };
+
+  const command = {
+    description,
+    vars: varsSchema,
+    options,
+    output: z.union([output, PaymentRequiredSchema, RateLimitedSchema]),
+    mcp,
+    run: wrappedRun,
+  };
+
+  const tool: ToolHandler<z.output<output> | PaymentRequiredResult | RateLimitedResult> = {
+    name: mcp.command,
+    description,
+    annotations: mcp.annotations,
+    inputSchema: zodToInputSchema(options),
+    handler: async (params, context) => wrappedRun({ options: options.parse(params), var: context }),
+  };
+
+  return {
+    command,
+    tool,
+  };
+}
+
+function isAuthError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const status = (error as { response?: { status?: number } }).response?.status;
+  return status === 401 || status === 403;
+}
+
+function zodToInputSchema(schema: z.ZodObject<z.ZodRawShape>): ToolInputSchema {
+  const jsonSchema = z.toJSONSchema(schema, {
+    unrepresentable: "any",
+    io: "input",
+  });
+  if (!jsonSchema.properties || jsonSchema.type !== "object") {
+    return { type: "object", properties: {} };
+  }
+  return {
+    type: "object",
+    properties: jsonSchema.properties,
+    required: jsonSchema.required,
+  };
+}

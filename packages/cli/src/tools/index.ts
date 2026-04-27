@@ -1,38 +1,40 @@
 /**
  * MCP Tools Registry
  *
- * Chain-specific tools for Solana and EVM chains.
- * Tools mirror the browser-sdk's chain-specific API pattern (sdk.solana.*, sdk.ethereum.*).
+ * Aggregates all tools defined in ../actions/* (wallet, Solana, EVM, Hyperliquid perps, utilities).
  */
 
-import { getWalletAddressesTool } from "./get-wallet-addresses.js";
-import { getConnectionStatusTool } from "./get-connection-status.js";
-import { getTokenBalancesTool } from "./get-token-balances.js";
-import { transferTokensTool } from "./transfer-tokens.js";
-import { buyTokenTool } from "./buy-token.js";
-import { loginTool } from "./login.js";
-import { sendSolanaTransactionTool } from "./send-solana-transaction.js";
-import { sendEvmTransactionTool } from "./send-evm-transaction.js";
-import { signSolanaMessageTool } from "./sign-solana-message.js";
-import { signEvmPersonalMessageTool } from "./sign-evm-personal-message.js";
-import { signEvmTypedDataTool } from "./sign-evm-typed-data.js";
-import { simulateTransactionTool } from "./simulate-transaction.js";
-import { portfolioRebalanceTool } from "./portfolio-rebalance.js";
-import { getPerpMarketsTool } from "./get-perp-markets.js";
-import { getPerpAccountTool } from "./get-perp-account.js";
-import { getPerpPositionsTool } from "./get-perp-positions.js";
-import { getPerpOrdersTool } from "./get-perp-orders.js";
-import { getPerpTradeHistoryTool } from "./get-perp-trade-history.js";
-import { openPerpPositionTool } from "./open-perp-position.js";
-import { closePerpPositionTool } from "./close-perp-position.js";
-import { cancelPerpOrderTool } from "./cancel-perp-order.js";
-import { updatePerpLeverageTool } from "./update-perp-leverage.js";
-import { transferSpotToPerpsTool } from "./transfer-spot-to-perps.js";
-import { depositToHyperliquidTool } from "./deposit-to-hyperliquid.js";
-import { withdrawFromPerpsTool } from "./withdraw-from-perps.js";
+import { getWalletAddressesTool } from "../actions/get-wallet-addresses.js";
+import { getConnectionStatusTool } from "../actions/get-connection-status.js";
+import { getTokenBalancesTool } from "../actions/get-token-balances.js";
+import { transferTokensTool } from "../actions/transfer-tokens.js";
+import { buyTokenTool } from "../actions/buy-token.js";
+import { loginTool } from "../actions/login.js";
+import { logoutTool } from "../actions/logout.js";
+import { sendSolanaTransactionTool } from "../actions/send-solana-transaction.js";
+import { sendEvmTransactionTool } from "../actions/send-evm-transaction.js";
+import { signSolanaMessageTool } from "../actions/sign-solana-message.js";
+import { signEvmPersonalMessageTool } from "../actions/sign-evm-personal-message.js";
+import { signEvmTypedDataTool } from "../actions/sign-evm-typed-data.js";
+import { simulateTransactionTool } from "../actions/simulate-transaction.js";
+import { portfolioRebalanceTool } from "../actions/portfolio-rebalance.js";
+import { getPerpMarketsTool } from "../actions/get-perp-markets.js";
+import { getPerpAccountTool } from "../actions/get-perp-account.js";
+import { getPerpPositionsTool } from "../actions/get-perp-positions.js";
+import { getPerpOrdersTool } from "../actions/get-perp-orders.js";
+import { getPerpTradeHistoryTool } from "../actions/get-perp-trade-history.js";
+import { openPerpPositionTool } from "../actions/open-perp-position.js";
+import { closePerpPositionTool } from "../actions/close-perp-position.js";
+import { cancelPerpOrderTool } from "../actions/cancel-perp-order.js";
+import { updatePerpLeverageTool } from "../actions/update-perp-leverage.js";
+import { transferSpotToPerpsTool } from "../actions/transfer-spot-to-perps.js";
+import { depositToHyperliquidTool } from "../actions/deposit-to-hyperliquid.js";
+import { withdrawFromPerpsTool } from "../actions/withdraw-from-perps.js";
+import { withdrawFromHyperliquidSpotTool } from "../actions/withdraw-from-hyperliquid-spot.js";
 
-import { payApiAccessTool } from "./pay-api-access.js";
-import { getTokenAllowanceTool } from "./get-token-allowance.js";
+import { payApiAccessTool } from "../actions/pay-api-access.js";
+import { getTokenAllowanceTool } from "../actions/get-token-allowance.js";
+import { getTokenPriceTool } from "../actions/get-token-price.js";
 import type { ToolHandler } from "./types.js";
 
 /**
@@ -40,10 +42,12 @@ import type { ToolHandler } from "./types.js";
  */
 export const tools: ToolHandler[] = [
   loginTool,
+  logoutTool,
   // Wallet utilities
   getWalletAddressesTool,
   getConnectionStatusTool,
   getTokenBalancesTool,
+  getTokenPriceTool,
   simulateTransactionTool,
   // Solana tools
   sendSolanaTransactionTool,
@@ -70,26 +74,6 @@ export const tools: ToolHandler[] = [
   transferSpotToPerpsTool,
   withdrawFromPerpsTool,
   depositToHyperliquidTool,
-
+  withdrawFromHyperliquidSpotTool,
   payApiAccessTool,
 ];
-
-/**
- * Get a tool by name
- * @param name - The name of the tool to retrieve
- * @returns The tool handler or undefined if not found
- */
-export function getTool(name: string): ToolHandler | undefined {
-  return tools.find(tool => tool.name === name);
-}
-
-/**
- * Get all tool names
- * @returns Array of tool names
- */
-export function getToolNames(): string[] {
-  return tools.map(tool => tool.name);
-}
-
-// Re-export types
-export type { ToolHandler, ToolContext, ToolInputSchema } from "./types.js";

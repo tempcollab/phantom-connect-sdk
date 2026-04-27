@@ -52,17 +52,22 @@ export class PluginSession {
       return this.initializingPromise;
     }
 
-    // Create and store the initialization promise
+    // Create and store the initialization promise.
+    // The stale-promise guard (this.initializingPromise === initPromise) prevents a
+    // concurrent logout() from being overwritten by a .then() that resolves after logout clears
+    // this.initializingPromise.
     const initPromise = this.sessionManager
       .initialize(displayOptions)
       .then(() => {
-        this.initialized = true;
-        this.pendingPrompt = null;
+        if (this.initializingPromise === initPromise) {
+          this.initialized = true;
+          this.pendingPrompt = null;
+        }
       })
-      .catch((error: unknown) => {
-        // Clear promise on error so subsequent calls can retry
-        this.initializingPromise = null;
-        throw error;
+      .finally(() => {
+        if (this.initializingPromise === initPromise) {
+          this.initializingPromise = null;
+        }
       });
     this.initializingPromise = initPromise;
 
@@ -110,6 +115,23 @@ export class PluginSession {
     this.pendingPrompt = null;
     await this.sessionManager.resetSession(displayOptions);
     this.initialized = true;
+  }
+
+  async logout(): Promise<void> {
+    // Await any in-flight initialization before clearing so that a concurrent
+    // sessionManager.initialize() cannot write session data to disk after
+    // sessionManager.logout() has already deleted it.
+    if (this.initializingPromise) {
+      try {
+        await this.initializingPromise;
+      } catch {
+        /* ignore auth errors */
+      }
+    }
+    this.initializingPromise = null;
+    this.initialized = false;
+    this.pendingPrompt = null;
+    await this.sessionManager.logout();
   }
 
   isInitialized(): boolean {

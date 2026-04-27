@@ -1,19 +1,24 @@
 import { PaymentRequiredError, RateLimitError } from "@phantom/phantom-api-client";
+import { z } from "incur";
 
-export interface PaymentRequiredResult {
-  paymentRequired: true;
-  limitType: "daily";
-  amount: string;
-  token: string;
-  preparedTx: string;
-  message: string;
-}
+export const PaymentRequiredSchema = z.object({
+  paymentRequired: z.literal(true),
+  limitType: z.literal("daily"),
+  amount: z.string(),
+  token: z.string(),
+  preparedTx: z.string(),
+  message: z.string(),
+});
 
-export interface RateLimitedResult {
-  rateLimited: true;
-  retryAfterMs: number;
-  message: string;
-}
+export type PaymentRequiredResult = z.infer<typeof PaymentRequiredSchema>;
+
+export const RateLimitedSchema = z.object({
+  rateLimited: z.literal(true),
+  retryAfterMs: z.number(),
+  message: z.string(),
+});
+
+export type RateLimitedResult = z.infer<typeof RateLimitedSchema>;
 
 /**
  * Wraps an async handler and converts PaymentRequiredError / RateLimitError into

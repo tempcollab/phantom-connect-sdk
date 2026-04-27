@@ -195,10 +195,10 @@ async function main() {
 
   if (failed) {
     console.error("\nSmoke test FAILED.");
-    process.exit(1);
   } else {
     console.log("\nSmoke test PASSED.");
   }
+  process.exit(failed ? 1 : 0);
 }
 
 function withTimeout(promise, ms, label) {

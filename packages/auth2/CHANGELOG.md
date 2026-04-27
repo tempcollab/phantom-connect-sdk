@@ -1,5 +1,15 @@
 # @phantom/auth2
 
+## 2.0.2
+
+### Patch Changes
+
+- 1e542fb: upgrade packages, improving commands
+- Updated dependencies [1e542fb]
+  - @phantom/base64url@2.0.2
+  - @phantom/crypto@2.0.2
+  - @phantom/sdk-types@2.0.2
+
 ## 2.0.1
 
 ### Patch Changes
