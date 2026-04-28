@@ -7,9 +7,12 @@
 import { Cli, z } from "incur";
 import { createAction } from "../utils/actions.js";
 import { createPerpsClient } from "../utils/perps.js";
-import { WalletSchema } from "../utils/schemas.js";
+import { WalletIdSchema, DerivationIndexSchema } from "../utils/schemas.js";
 
-const GetPerpAccountSchema = WalletSchema;
+const GetPerpAccountSchema = z.object({
+  walletId: WalletIdSchema.describe("Optional wallet ID (defaults to authenticated wallet)"),
+  derivationIndex: DerivationIndexSchema.describe("Optional derivation index (default: 0)"),
+});
 
 const PerpAccountSchema = z.object({
   accountValue: z.string(),
@@ -31,7 +34,7 @@ const getPerpAccountAction = createAction({
     },
   },
   run: async ({ options: params, var: context }) => {
-    const walletId = params.walletId(context.manager);
+    const walletId = params.walletId ?? context.manager.getSession().walletId;
 
     const perps = await createPerpsClient(context, walletId, params.derivationIndex);
     return perps.getBalance();

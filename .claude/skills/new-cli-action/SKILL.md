@@ -67,16 +67,17 @@ Create `packages/cli/src/actions/<name>.ts` using the template below. Fill every
 import { Cli, z } from "incur";
 import { createAction } from "../utils/actions.js";
 // Import helpers as needed:
-//   Session/wallet:  import { WalletSchema } from "../utils/schemas.js";
+//   Session/wallet:  import { WalletIdSchema, DerivationIndexSchema } from "../utils/schemas.js";
 //   Solana address:  import { getSolanaAddress } from "../utils/solana.js";
 //   EVM address:     import { getEthereumAddress } from "../utils/evm.js";
 //   Perps client:    import { createPerpsClient } from "../utils/perps.js";
 //   Shared schemas:  import { ActionResponseSchema, PendingConfirmationSchema } from "../utils/output-schemas.js";
 
-// Use WalletSchema.safeExtend({...}) if the action touches the wallet (adds walletId resolver + derivationIndex).
-// Use z.object({...}) if it needs no wallet access.
-const <PascalName>Schema = WalletSchema.safeExtend({
+const <PascalName>Schema = z.object({
   // Each field needs a .describe() explaining its purpose and any defaults.
+  // Always include these at the bottom if the action touches the wallet:
+  // walletId: WalletIdSchema.describe("Optional wallet ID (defaults to authenticated wallet)"),
+  // derivationIndex: DerivationIndexSchema.describe("Optional derivation index (default: 0)"),
 });
 
 const <PascalName>OutputSchema = z.object({
@@ -113,15 +114,15 @@ const <camelName>Action = createAction({
   },
   run: async ({ options: params, var: context }) => {
     const { logger } = context;
-    const walletId = params.walletId(context.manager);
-    const derivationIndex = params.derivationIndex;
-    // Resolve walletId BEFORE calling getClient() so auth errors surface clearly.
-    const client = context.manager.getClient();
+    const session = context.manager.getSession();
 
-    // client                      → PhantomClient (sign, send, addresses)
+    // context.manager.getClient() → PhantomClient (sign, send, addresses)
     // context.apiClient           → PhantomApiClient (REST endpoints)
-    // walletId                    → resolved wallet ID (param or authenticated session)
-    // derivationIndex             → BIP-44 account index (default: 0)
+    // session.walletId            → currently authenticated wallet ID
+    // session.organizationId      → org ID for the current session
+
+    // A session is automatically initialized on first use and persisted
+    // across calls — no manual session management required.
 
     // ... implementation ...
 
@@ -265,14 +266,15 @@ A session is initialized on first use (triggering the browser auth flow) and per
 
 ## Reference: commonly used helpers
 
-| Helper                                                   | Import path              | When to use                                                                               |
-| -------------------------------------------------------- | ------------------------ | ----------------------------------------------------------------------------------------- |
-| `getSolanaAddress(context, walletId, derivationIndex)`   | `../utils/solana.js`     | Derive Solana public key                                                                  |
-| `getEthereumAddress(context, walletId, derivationIndex)` | `../utils/evm.js`        | Derive EVM address                                                                        |
-| `createPerpsClient(context, walletId, derivationIndex)`  | `../utils/perps.js`      | All Hyperliquid perps ops                                                                 |
-| `normalizeNetworkId(id)`                                 | `../utils/network.js`    | Normalise CAIP-2 chain IDs                                                                |
-| `parseBaseUnitAmount(amount)`                            | `../utils/amount.js`     | String/number → `bigint` base units                                                       |
-| `parseUiAmount(amount, decimals)`                        | `../utils/amount.js`     | UI units → `bigint` base units                                                            |
-| `runSimulation(body, context)`                           | `../utils/simulation.js` | Simulate before submitting                                                                |
-| `WalletSchema`                                           | `../utils/schemas.js`    | Base schema with `walletId` resolver + `derivationIndex`; extend it instead of `z.object` |
-| `Caip2ChainIdSchema`                                     | `../utils/schemas.js`    | CAIP-2 chain ID input field                                                               |
+| Helper                                                   | Import path              | When to use                         |
+| -------------------------------------------------------- | ------------------------ | ----------------------------------- |
+| `getSolanaAddress(context, walletId, derivationIndex)`   | `../utils/solana.js`     | Derive Solana public key            |
+| `getEthereumAddress(context, walletId, derivationIndex)` | `../utils/evm.js`        | Derive EVM address                  |
+| `createPerpsClient(context, walletId, derivationIndex?)` | `../utils/perps.js`      | All Hyperliquid perps ops           |
+| `normalizeNetworkId(id)`                                 | `../utils/network.js`    | Normalise CAIP-2 chain IDs          |
+| `parseBaseUnitAmount(amount)`                            | `../utils/amount.js`     | String/number → `bigint` base units |
+| `parseUiAmount(amount, decimals)`                        | `../utils/amount.js`     | UI units → `bigint` base units      |
+| `runSimulation(body, context)`                           | `../utils/simulation.js` | Simulate before submitting          |
+| `WalletIdSchema`                                         | `../utils/schemas.js`    | Optional wallet ID input field      |
+| `DerivationIndexSchema`                                  | `../utils/schemas.js`    | Optional HD index input field       |
+| `Caip2ChainIdSchema`                                     | `../utils/schemas.js`    | CAIP-2 chain ID input field         |

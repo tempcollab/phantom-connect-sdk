@@ -10,7 +10,7 @@ import { base64urlEncode } from "@phantom/base64url";
 import { Transaction } from "@solana/web3.js";
 
 import { createAction } from "../utils/actions.js";
-import { WalletSchema, Base64Schema } from "../utils/schemas.js";
+import { WalletIdSchema, DerivationIndexSchema, Base64Schema } from "../utils/schemas.js";
 import { runSimulation } from "../utils/simulation.js";
 
 const COMPUTE_BUDGET_PROGRAM = "ComputeBudget111111111111111111111111111111";
@@ -111,8 +111,10 @@ export const PaymentTransactionSchema = Base64Schema.describe(
   })
   .describe("Validates that the transaction is a valid payment transaction for API access");
 
-const PayApiAccessSchema = WalletSchema.safeExtend({
+const PayApiAccessSchema = z.object({
   preparedTx: PaymentTransactionSchema,
+  walletId: WalletIdSchema.describe("Optional wallet ID (defaults to authenticated wallet)"),
+  derivationIndex: DerivationIndexSchema.describe("Optional derivation index (default: 0)"),
 });
 
 const PayApiAccessOutputSchema = z.object({
@@ -141,8 +143,9 @@ const payApiAccessAction = createAction({
   run: async ({ options: params, var: context }) => {
     const { apiClient } = context;
     const client = context.manager.getClient();
+    const session = context.manager.getSession();
 
-    const walletId = params.walletId(context.manager);
+    const walletId = params.walletId ?? session.walletId;
     const derivationIndex = params.derivationIndex;
 
     const addresses = await client.getWalletAddresses(walletId, undefined, derivationIndex);

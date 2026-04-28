@@ -20,7 +20,6 @@ const makeContext = () => {
     manager: {
       getClient: () => client,
       getSession: () => session,
-      isInitialized: () => true,
     },
   };
 };

@@ -12,14 +12,16 @@ import { chainIdToNetworkId } from "@phantom/constants";
 import { stringToBase64url } from "@phantom/base64url";
 import { createAction } from "../utils/actions.js";
 import { parseChainId } from "../utils/params.js";
-import { WalletSchema, EvmChainIdSchema } from "../utils/schemas.js";
+import { WalletIdSchema, DerivationIndexSchema, EvmChainIdSchema } from "../utils/schemas.js";
 import { SignatureOutputSchema } from "../utils/output-schemas.js";
 
-const SignEvmPersonalMessageSchema = WalletSchema.safeExtend({
+const SignEvmPersonalMessageSchema = z.object({
   message: z.string().describe("The UTF-8 message to sign"),
   chainId: EvmChainIdSchema.describe(
     "EVM chain ID (e.g. 1 for Ethereum mainnet, 8453 for Base, 137 for Polygon, 42161 for Arbitrum, 143 for Monad). Matches the chainId field from DeFi aggregators.",
   ),
+  derivationIndex: DerivationIndexSchema.describe("Optional derivation index for the account (default: 0)"),
+  walletId: WalletIdSchema.describe("Optional wallet ID (defaults to authenticated wallet)"),
 });
 
 const signEvmPersonalMessageAction = createAction({
@@ -41,6 +43,8 @@ const signEvmPersonalMessageAction = createAction({
   },
   run: async ({ options: params, var: context }) => {
     const { logger } = context;
+    const client = context.manager.getClient();
+    const session = context.manager.getSession();
 
     const chainId = parseChainId(params.chainId);
     const networkId = chainIdToNetworkId(chainId);
@@ -50,8 +54,7 @@ const signEvmPersonalMessageAction = createAction({
       );
     }
 
-    const walletId = params.walletId(context.manager);
-    const client = context.manager.getClient();
+    const walletId = params.walletId ?? session.walletId;
 
     // Convert UTF-8 message to base64url (what PhantomClient KMS expects for EIP-191)
     const base64Message = stringToBase64url(params.message);

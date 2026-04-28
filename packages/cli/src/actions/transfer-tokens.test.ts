@@ -54,7 +54,18 @@ jest.mock("@phantom/base64url", () => ({
 
 const MOCK_SIMULATION_RESPONSE = {
   type: "transaction",
-  expectedChanges: [{ type: "AssetChange", changeSign: "MINUS", changeText: "-0.5 SOL" }],
+  expectedChanges: [
+    {
+      type: "AssetChange",
+      fallbackMessage: "-0.5 SOL",
+      name: "Solana",
+      changeSign: "MINUS",
+      changeText: "-0.5 SOL",
+      changeType: "transfer",
+      asset: { type: "native", amount: "500000000", decimals: 9, symbol: "SOL" },
+      metadata: [],
+    },
+  ],
   warnings: [],
 };
 
@@ -74,7 +85,7 @@ const makeContext = (overrides: Record<string, unknown> = {}) => {
     session,
     logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
     apiClient,
-    manager: { resetSession: jest.fn(), getClient: () => client, getSession: () => session, isInitialized: () => true },
+    manager: { resetSession: jest.fn(), getClient: () => client, getSession: () => session },
   };
 };
 

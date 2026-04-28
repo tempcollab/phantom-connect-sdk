@@ -13,9 +13,9 @@ import { getEthereumAddress } from "../utils/evm.js";
 import { fetchERC20Allowance } from "../utils/allowance.js";
 import { resolveEvmRpcUrl } from "../utils/rpc.js";
 import { parseChainId } from "../utils/params.js";
-import { WalletSchema, EvmChainIdSchema, EthereumAddressSchema } from "../utils/schemas.js";
+import { WalletIdSchema, DerivationIndexSchema, EvmChainIdSchema, EthereumAddressSchema } from "../utils/schemas.js";
 
-const GetTokenAllowanceSchema = WalletSchema.safeExtend({
+const GetTokenAllowanceSchema = z.object({
   chainId: EvmChainIdSchema.describe(
     'EVM chain ID (e.g. 8453 for Base, 1 for Ethereum, 137 for Polygon). Accepts a number, decimal string, or hex string (e.g. "0x2105").',
   ),
@@ -24,7 +24,11 @@ const GetTokenAllowanceSchema = WalletSchema.safeExtend({
   ownerAddress: EthereumAddressSchema.optional().describe(
     "Address of the token owner. If omitted, the authenticated wallet address for the chain is used.",
   ),
+  derivationIndex: DerivationIndexSchema.describe(
+    "Optional derivation index for the wallet address (default: 0). Only used when ownerAddress is omitted.",
+  ),
   rpcUrl: z.string().optional().describe("Optional EVM RPC URL override."),
+  walletId: WalletIdSchema.describe("Optional wallet ID (defaults to authenticated wallet)"),
 });
 
 const TokenAllowanceSchema = z.object({
@@ -54,6 +58,7 @@ const getTokenAllowanceAction = createAction({
   },
   run: async ({ options: params, var: context }) => {
     const { logger } = context;
+    const session = context.manager.getSession();
 
     const chainId = parseChainId(params.chainId);
     const networkId = chainIdToNetworkId(chainId);
@@ -73,7 +78,7 @@ const getTokenAllowanceAction = createAction({
     if (params.ownerAddress !== undefined) {
       ownerAddress = params.ownerAddress;
     } else {
-      const walletId = params.walletId(context.manager);
+      const walletId = params.walletId ?? session.walletId;
       ownerAddress = await getEthereumAddress(context, walletId, params.derivationIndex);
     }
 

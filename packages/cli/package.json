@@ -1,6 +1,6 @@
 {
   "name": "@phantom/cli",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "description": "Phantom CLI — interact with your Phantom wallet from the terminal",
   "repository": {
     "type": "git",

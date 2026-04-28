@@ -4,6 +4,7 @@ import {
   Base64Schema,
   Caip19Schema,
   Caip2ChainIdSchema,
+  DerivationIndexSchema,
   EthereumAddressSchema,
   EvmCaip2ChainIdSchema,
   EvmChainIdSchema,
@@ -12,7 +13,7 @@ import {
   PositiveNumericStringSchema,
   SolanaAddressSchema,
   SolanaCaip2ChainIdSchema,
-  WalletSchema,
+  WalletIdSchema,
 } from "../utils/schemas";
 
 const USDC_MAINNET = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48";
@@ -20,96 +21,82 @@ const USDC_CHECKSUM = getAddress(USDC_MAINNET);
 const SOL_MAINNET_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const SOL_WRAPPED = "So11111111111111111111111111111111111111112";
 
-describe("WalletSchema", () => {
-  describe("walletId resolver", () => {
-    it("when provided, returns the given value without touching manager", () => {
-      const { walletId } = WalletSchema.parse({ walletId: "wallet-abc" });
-      const manager = {
-        isInitialized: () => {
-          throw new Error("should not be called");
-        },
-      } as any;
-      expect(walletId(manager)).toBe("wallet-abc");
-    });
-
-    it("when omitted, returns walletId from the manager session", () => {
-      const { walletId } = WalletSchema.parse({});
-      const manager = {
-        isInitialized: () => true,
-        getSession: () => ({ walletId: "session-wallet-123" }),
-      } as any;
-      expect(walletId(manager)).toBe("session-wallet-123");
-    });
-
-    it("when omitted and manager not initialized, it throws an error", () => {
-      const { walletId } = WalletSchema.parse({});
-      const manager = { isInitialized: () => false } as any;
-      expect(() => walletId(manager)).toThrow("Session not initialized — call login or phantom_login to authenticate.");
-    });
+describe("DerivationIndexSchema", () => {
+  it("accepts non-negative integers", () => {
+    expect(DerivationIndexSchema.parse(0)).toBe(0);
+    expect(DerivationIndexSchema.parse(42)).toBe(42);
   });
 
-  describe("derivationIndex", () => {
-    it("accepts non-negative integers", () => {
-      expect(WalletSchema.parse({ derivationIndex: 0 }).derivationIndex).toBe(0);
-      expect(WalletSchema.parse({ derivationIndex: 42 }).derivationIndex).toBe(42);
-    });
+  it("coerces numeric strings", () => {
+    expect(DerivationIndexSchema.parse("7")).toBe(7);
+  });
 
-    it("coerces numeric strings", () => {
-      expect(WalletSchema.parse({ derivationIndex: "7" }).derivationIndex).toBe(7);
-    });
+  it("defaults undefined to 0", () => {
+    expect(DerivationIndexSchema.parse(undefined)).toBe(0);
+  });
 
-    it("defaults to 0 when omitted", () => {
-      expect(WalletSchema.parse({}).derivationIndex).toBe(0);
-    });
+  it("rejects negative values", () => {
+    const r = DerivationIndexSchema.safeParse(-1);
+    if (r.success) {
+      throw new Error("expected parse to fail");
+    }
+    expect(r.error.issues).toEqual(
+      expect.arrayContaining([expect.objectContaining({ path: [], message: "Too small: expected number to be >=0" })]),
+    );
+  });
 
-    it("rejects negative values", () => {
-      const r = WalletSchema.safeParse({ derivationIndex: -1 });
-      if (r.success) throw new Error("expected parse to fail");
-      expect(r.error.issues).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ path: ["derivationIndex"], message: "Too small: expected number to be >=0" }),
-        ]),
-      );
-    });
+  it("rejects non-integers", () => {
+    const r = DerivationIndexSchema.safeParse(1.5);
+    if (r.success) {
+      throw new Error("expected parse to fail");
+    }
+    expect(r.error.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: [], message: "Invalid input: expected int, received number" }),
+      ]),
+    );
+  });
 
-    it("rejects non-integers", () => {
-      const r = WalletSchema.safeParse({ derivationIndex: 1.5 });
-      if (r.success) throw new Error("expected parse to fail");
-      expect(r.error.issues).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            path: ["derivationIndex"],
-            message: "Invalid input: expected int, received number",
-          }),
-        ]),
-      );
-    });
+  it("rejects values outside safe integer range", () => {
+    const r = DerivationIndexSchema.safeParse(Number.MAX_SAFE_INTEGER + 1);
+    if (r.success) {
+      throw new Error("expected parse to fail");
+    }
+    expect(r.error.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: [], message: "derivationIndex must be a safe integer" }),
+      ]),
+    );
+  });
 
-    it("rejects values outside safe integer range", () => {
-      const r = WalletSchema.safeParse({ derivationIndex: Number.MAX_SAFE_INTEGER + 1 });
-      if (r.success) throw new Error("expected parse to fail");
-      expect(r.error.issues).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            path: ["derivationIndex"],
-            message: "derivationIndex must be a safe integer",
-          }),
-        ]),
-      );
-    });
+  it("rejects non-numeric strings that coerce to NaN", () => {
+    const r = DerivationIndexSchema.safeParse("not-a-number");
+    if (r.success) {
+      throw new Error("expected parse to fail");
+    }
+    expect(r.error.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: [], message: "Invalid input: expected number, received NaN" }),
+      ]),
+    );
+  });
+});
 
-    it("rejects non-numeric strings that coerce to NaN", () => {
-      const r = WalletSchema.safeParse({ derivationIndex: "not-a-number" });
-      if (r.success) throw new Error("expected parse to fail");
-      expect(r.error.issues).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            path: ["derivationIndex"],
-            message: "Invalid input: expected number, received NaN",
-          }),
-        ]),
-      );
-    });
+describe("WalletIdSchema", () => {
+  it("accepts undefined", () => {
+    expect(WalletIdSchema.parse(undefined)).toBeUndefined();
+  });
+
+  it("accepts any string including empty", () => {
+    expect(WalletIdSchema.parse("wallet-abc")).toBe("wallet-abc");
+    expect(WalletIdSchema.parse("")).toBe("");
+  });
+
+  it("rejects null", () => {
+    const r = WalletIdSchema.safeParse(null);
+    if (r.success) {
+      throw new Error("expected parse to fail");
+    }
   });
 });
 

@@ -72,19 +72,18 @@ describe("get_perp_markets", () => {
     expect(mockPerpsClient.getMarkets).toHaveBeenCalledTimes(1);
   });
 
-  it("uses anonymous client when walletId is not in params", async () => {
+  it("uses session walletId when not in params", async () => {
     const ctx = makeContext();
     await getPerpMarketsTool.handler({}, ctx as any);
-    const { createAnonymousPerpsClient, createPerpsClient } = jest.requireMock("../utils/perps.js");
-    expect(createAnonymousPerpsClient).toHaveBeenCalledWith(ctx);
-    expect(createPerpsClient).not.toHaveBeenCalled();
+    const { createPerpsClient } = jest.requireMock("../utils/perps.js");
+    expect(createPerpsClient).toHaveBeenCalledWith(ctx, "wallet-1");
   });
 
   it("uses explicit walletId from params", async () => {
     const ctx = makeContext();
     await getPerpMarketsTool.handler({ walletId: "other-wallet" }, ctx as any);
     const { createPerpsClient } = jest.requireMock("../utils/perps.js");
-    expect(createPerpsClient).toHaveBeenCalledWith(ctx, "other-wallet", 0);
+    expect(createPerpsClient).toHaveBeenCalledWith(ctx, "other-wallet");
   });
 
   it("uses anonymous client when no walletId is available", async () => {

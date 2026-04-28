@@ -9,7 +9,7 @@
 
 import { Cli, z } from "incur";
 import { createAction } from "../utils/actions.js";
-import { WalletSchema, PercentageSchema, Caip19Schema } from "../utils/schemas.js";
+import { WalletIdSchema, PercentageSchema, Caip19Schema } from "../utils/schemas.js";
 import { resolveNetworks, fetchPortfolioBalances, type PortfolioItem } from "../utils/portfolio.js";
 import { normalizeSwapperChainId } from "../utils/network.js";
 import { getSolanaAddress } from "../utils/solana.js";
@@ -218,7 +218,7 @@ export function computeSwapPlan(
   return swaps;
 }
 
-const PortfolioRebalanceSchema = WalletSchema.safeExtend({
+const PortfolioRebalanceSchema = z.object({
   phase: z
     .enum(["analyze", "execute"])
     .describe(
@@ -263,6 +263,7 @@ const PortfolioRebalanceSchema = WalletSchema.safeExtend({
     .optional()
     .default(false)
     .describe("If true during 'execute' phase, calculate and return the swap plan without executing. Default: false."),
+  walletId: WalletIdSchema.describe("Optional wallet ID (defaults to authenticated wallet)"),
 });
 
 const PortfolioRebalanceOutputSchema = z.object({
@@ -333,6 +334,7 @@ const portfolioRebalanceAction = createAction({
   },
   run: async ({ options: params, var: context }) => {
     const { logger } = context;
+    const session = context.manager.getSession();
     const phase = params.phase;
     const network = params.network;
 
@@ -441,10 +443,9 @@ const portfolioRebalanceAction = createAction({
       };
     }
 
-    const walletId = params.walletId(context.manager);
-    const derivationIndex = params.derivationIndex;
+    const walletId = params.walletId ?? session.walletId;
     const sellChainId = normalizeSwapperChainId("solana:mainnet");
-    const solanaAddress = await getSolanaAddress(context, walletId, derivationIndex);
+    const solanaAddress = await getSolanaAddress(context, walletId, undefined);
 
     const results: SwapResultEntry[] = [];
     const errors: string[] = [];
@@ -476,7 +477,6 @@ const portfolioRebalanceAction = createAction({
           rawSellChain: "solana:mainnet",
           taker: solanaAddress,
           walletId,
-          derivationIndex,
           client: context.manager.getClient(),
           logger,
         });

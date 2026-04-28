@@ -7,15 +7,17 @@
 import { Cli, z } from "incur";
 import { createAction } from "../utils/actions.js";
 import { createPerpsClient } from "../utils/perps.js";
-import { WalletSchema } from "../utils/schemas.js";
+import { WalletIdSchema, DerivationIndexSchema } from "../utils/schemas.js";
 import { ActionResponseSchema } from "../utils/output-schemas.js";
 
-const UpdatePerpLeverageSchema = WalletSchema.safeExtend({
+const UpdatePerpLeverageSchema = z.object({
   market: z.string().trim().min(1, { message: "market is required" }).describe('Market symbol (e.g. "BTC")'),
   leverage: z.coerce.number().min(1).describe("Leverage multiplier (e.g. 1 for 1x, 10 for 10x)"),
   marginType: z
     .enum(["cross", "isolated"])
     .describe("Margin type: 'cross' shares balance, 'isolated' caps risk per-position"),
+  walletId: WalletIdSchema.describe("Optional wallet ID (defaults to authenticated wallet)"),
+  derivationIndex: DerivationIndexSchema.describe("Optional derivation index (default: 0)"),
 });
 
 const updatePerpLeverageAction = createAction({
@@ -34,7 +36,7 @@ const updatePerpLeverageAction = createAction({
     },
   },
   run: async ({ options: params, var: context }) => {
-    const walletId = params.walletId(context.manager);
+    const walletId = params.walletId ?? context.manager.getSession().walletId;
     const perps = await createPerpsClient(context, walletId, params.derivationIndex);
 
     context.logger.info(`Updating ${params.market} leverage to ${params.leverage}x ${params.marginType}`);

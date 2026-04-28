@@ -23,7 +23,13 @@ import { getEthereumAddress, estimateGas, fetchGasPrice, fetchNonce, assertEvmAd
 import { resolveSolanaRpcUrl, resolveEvmRpcUrl } from "../utils/rpc.js";
 import { parseBaseUnitAmount, parseUiAmount, requirePositiveAmount } from "../utils/amount.js";
 import { runSimulation } from "../utils/simulation.js";
-import { WalletSchema, Caip2ChainIdSchema, EthereumAddressSchema, SolanaAddressSchema } from "../utils/schemas.js";
+import {
+  WalletIdSchema,
+  DerivationIndexSchema,
+  Caip2ChainIdSchema,
+  EthereumAddressSchema,
+  SolanaAddressSchema,
+} from "../utils/schemas.js";
 import { PendingConfirmationSchema } from "../utils/output-schemas.js";
 
 const DEFAULT_COMMITMENT: Commitment = "confirmed";
@@ -38,7 +44,7 @@ function encodeErc20Transfer(recipient: string, amount: bigint): string {
   return `0xa9059cbb${recipientHex}${amountHex}`;
 }
 
-const TransferTokensSchema = WalletSchema.safeExtend({
+const TransferTokensSchema = z.object({
   networkId: Caip2ChainIdSchema.describe(
     'Network identifier. Solana: "solana:mainnet", "solana:devnet". EVM: "eip155:1" (Ethereum), "eip155:8453" (Base), "eip155:137" (Polygon), "eip155:42161" (Arbitrum), "eip155:143" (Monad).',
   ),
@@ -66,6 +72,7 @@ const TransferTokensSchema = WalletSchema.safeExtend({
     .describe(
       "Token decimals — optional for Solana (fetched from chain if omitted); required for ERC-20 tokens when amountUnit is 'ui'.",
     ),
+  derivationIndex: DerivationIndexSchema.describe("Optional derivation index for the account (default: 0)"),
   rpcUrl: z.string().optional().describe("Optional RPC URL override (Solana or EVM, defaults based on networkId)"),
   createAssociatedTokenAccount: z
     .union([z.boolean(), z.stringbool()])
@@ -78,6 +85,7 @@ const TransferTokensSchema = WalletSchema.safeExtend({
       "Set to true only after the user has reviewed and approved the simulation results. " +
         "Omit (or false) on the first call to get a simulation preview without submitting.",
     ),
+  walletId: WalletIdSchema.describe("Optional wallet ID (defaults to authenticated wallet)"),
 });
 
 const TransferTokensOutputSchema = z.union([
@@ -122,6 +130,7 @@ const transferTokensAction = createAction({
   run: async ({ options: params, var: context }) => {
     const { logger } = context;
     const client = context.manager.getClient();
+    const session = context.manager.getSession();
 
     const normalizedNetworkId = normalizeNetworkId(params.networkId);
     const isEvm = normalizedNetworkId.startsWith("eip155:");
@@ -134,7 +143,7 @@ const transferTokensAction = createAction({
     }
 
     const amount = params.amount;
-    const walletId = params.walletId(context.manager);
+    const walletId = params.walletId ?? session.walletId;
 
     const derivationIndex = params.derivationIndex;
     const amountUnit = params.amountUnit;

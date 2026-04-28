@@ -12,11 +12,10 @@ import type { ToolAnnotations, ToolHandler, ToolInputSchema } from "../tools/typ
  *   what the action does, any required preconditions, what a success response looks like, and
  *   important defaults. This same string becomes the CLI `--help` description.
  *
- * @param options - Zod schema for the action's input parameters. Every field must have
+ * @param options - Zod object schema for the action's input parameters. Every field must have
  *   a `.describe()` call. Use `z.coerce.number()` for numeric CLI flags (CLI args arrive as
  *   strings), and `z.stringbool()` for boolean flags that may be passed as `"true"/"false"`.
- *   Use `WalletSchema.safeExtend({...})` from `utils/schemas.ts` instead of `z.object({...})`
- *   when the action needs wallet access.
+ *   Prefer `WalletIdSchema` / `DerivationIndexSchema` from `utils/schemas.ts` for wallet params.
  *
  * @param output - Zod schema for the **success** return type only. Always define a concrete
  *   schema — never use `z.any()`. Do not include `PaymentRequiredSchema` or `RateLimitedSchema`
@@ -52,15 +51,16 @@ import type { ToolAnnotations, ToolHandler, ToolInputSchema } from "../tools/typ
  *
  * @example
  * ```typescript
- * const GetPriceSchema = WalletSchema.safeExtend({
- *   symbol: z.string().describe("Ticker symbol, e.g. BTC"),
- *   decimals: z.coerce.number().default(2).describe("Decimal places to display (default: 2)"),
- *   verbose: z.stringbool().default(false).describe("If true, include raw market data"),
- * });
- *
  * const GetPriceOutputSchema = z.object({
  *   symbol: z.string(),
  *   priceUsd: z.string(),
+ * });
+ *
+ * const GetPriceSchema = z.object({
+ *   symbol: z.string().describe("Ticker symbol, e.g. BTC"),
+ *   decimals: z.coerce.number().default(2).describe("Decimal places to display (default: 2)"),
+ *   verbose: z.stringbool().default(false).describe("If true, include raw market data"),
+ *   walletId: WalletIdSchema.describe("Optional wallet ID (defaults to authenticated wallet)"),
  * });
  *
  * const getPriceAction = createAction({
@@ -77,7 +77,7 @@ import type { ToolAnnotations, ToolHandler, ToolInputSchema } from "../tools/typ
  *   },
  *   run: async ({ options: params, var: context }) => {
  *     const { logger } = context;
- *     const walletId = params.walletId(context.manager);
+ *     const session = context.manager.getSession();
  *     logger.info(`Fetching price for ${params.symbol}`);
  *     // ... fetch logic ...
  *     return { symbol: params.symbol, priceUsd: "42000.00" };

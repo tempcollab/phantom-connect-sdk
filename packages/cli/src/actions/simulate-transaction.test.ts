@@ -30,7 +30,7 @@ const makeContext = (overrides: Record<string, unknown> = {}) => {
     session,
     logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
     apiClient,
-    manager: { resetSession: jest.fn(), getClient: () => client, getSession: () => session, isInitialized: () => true },
+    manager: { resetSession: jest.fn(), getClient: () => client, getSession: () => session },
   };
 };
 
@@ -39,13 +39,24 @@ const MOCK_SIMULATION_RESPONSE = {
   expectedChanges: [
     {
       type: "AssetChange",
+      fallbackMessage: "-0.1 SOL",
+      name: "Solana",
       changeSign: "MINUS",
       changeText: "-0.1 SOL",
+      changeType: "transfer",
       asset: { type: "native", amount: "100000000", decimals: 9, symbol: "SOL", usdValue: 17.0 },
+      metadata: [],
     },
   ],
   warnings: [],
-  advancedDetails: { chainId: "solana:101", totalFee: "5000", feePayers: [SOLANA_ADDRESS] },
+  advancedDetails: {
+    chainId: "solana:101",
+    tokenChange: [],
+    advancedRows: [],
+    requestId: "test-request-id",
+    totalFee: "5000",
+    feePayers: [SOLANA_ADDRESS],
+  },
 };
 
 const SOLANA_TX_PARAMS = {

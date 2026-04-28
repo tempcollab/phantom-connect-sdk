@@ -8,11 +8,10 @@
 import { Cli, z } from "incur";
 import { createAction } from "../utils/actions.js";
 import { createPerpsClient, createAnonymousPerpsClient } from "../utils/perps.js";
-import { WalletSchema } from "../utils/schemas.js";
+import { WalletIdSchema } from "../utils/schemas.js";
 
 const GetPerpMarketsSchema = z.object({
-  walletId: z.string().optional().describe("Optional wallet ID. If omitted, markets are fetched anonymously."),
-  derivationIndex: WalletSchema.shape.derivationIndex,
+  walletId: WalletIdSchema.describe("Optional wallet ID (defaults to authenticated wallet)"),
 });
 
 const PerpMarketSchema = z.object({
@@ -42,10 +41,8 @@ const getPerpMarketsAction = createAction({
     },
   },
   run: async ({ options: params, var: context }) => {
-    const walletId = params.walletId;
-    const perps = walletId
-      ? await createPerpsClient(context, walletId, params.derivationIndex)
-      : createAnonymousPerpsClient(context);
+    const walletId = params.walletId ?? context.manager.getSession().walletId;
+    const perps = walletId ? await createPerpsClient(context, walletId) : createAnonymousPerpsClient(context);
     return perps.getMarkets();
   },
 });

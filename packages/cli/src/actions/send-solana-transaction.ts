@@ -18,22 +18,24 @@ import { createAction } from "../utils/actions.js";
 import { normalizeNetworkId, normalizeSwapperChainId } from "../utils/network.js";
 import { getSolanaAddress } from "../utils/solana.js";
 import { runSimulation } from "../utils/simulation.js";
-import { WalletSchema, SolanaCaip2ChainIdSchema, Base64Schema } from "../utils/schemas.js";
+import { WalletIdSchema, DerivationIndexSchema, SolanaCaip2ChainIdSchema, Base64Schema } from "../utils/schemas.js";
 import { PendingConfirmationSchema } from "../utils/output-schemas.js";
 
-const SendSolanaTransactionSchema = WalletSchema.safeExtend({
+const SendSolanaTransactionSchema = z.object({
   transaction: Base64Schema.describe(
     "The serialized Solana transaction encoded as standard base64 (the format used by Solana JSON-RPC and DeFi APIs). Do not base58-encode — use base64.",
   ),
   networkId: SolanaCaip2ChainIdSchema.default("solana:mainnet").describe(
     'Solana network identifier (e.g., "solana:mainnet", "solana:devnet"). Defaults to "solana:mainnet".',
   ),
+  derivationIndex: DerivationIndexSchema.describe("Optional derivation index for the account (default: 0)"),
   confirmed: z
     .union([z.boolean(), z.stringbool()])
     .default(false)
     .describe(
       "Set to true only after the user has reviewed and approved the simulation results. Omit (or false) on the first call to get a simulation preview without submitting.",
     ),
+  walletId: WalletIdSchema.describe("Optional wallet ID (defaults to authenticated wallet)"),
 });
 
 const SendSolanaTransactionOutputSchema = z.union([
@@ -65,14 +67,15 @@ const sendSolanaTransactionAction = createAction({
   },
   run: async ({ options: params, var: context }) => {
     const { logger } = context;
+    const client = context.manager.getClient();
+    const session = context.manager.getSession();
 
     const networkId = normalizeNetworkId(params.networkId) as NetworkId;
     if (!isSolanaChain(networkId)) {
       throw new Error("send_solana_transaction supports Solana networks only");
     }
 
-    const walletId = params.walletId(context.manager);
-    const client = context.manager.getClient();
+    const walletId = params.walletId ?? session.walletId;
     const derivationIndex = params.derivationIndex;
 
     // Decode standard base64 → bytes → re-encode as base64url (what PhantomClient KMS expects)

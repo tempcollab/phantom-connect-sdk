@@ -7,47 +7,51 @@
 import { Cli, z } from "incur";
 import { createAction } from "../utils/actions.js";
 import { createPerpsClient } from "../utils/perps.js";
-import { WalletSchema } from "../utils/schemas.js";
+import { WalletIdSchema, DerivationIndexSchema } from "../utils/schemas.js";
 import { ActionResponseSchema } from "../utils/output-schemas.js";
 
-const OpenPerpPositionSchema = WalletSchema.safeExtend({
-  market: z
-    .string()
-    .trim()
-    .min(1, { message: "market is required" })
-    .describe('Market symbol (e.g. "BTC", "ETH", "SOL")'),
-  direction: z.enum(["long", "short"]).describe("Position direction"),
-  sizeUsd: z.coerce
-    .number()
-    .refine(n => Number.isFinite(n) && n > 0, { message: "sizeUsd must be a positive number" })
-    .describe('Position size in USD (e.g. "100" for $100 notional value)'),
-  leverage: z.coerce
-    .number()
-    .refine(n => Number.isFinite(n) && n >= 1, { message: "leverage must be a finite number >= 1" })
-    .describe("Leverage multiplier (e.g. 1 for 1x, 10 for 10x)"),
-  orderType: z
-    .enum(["market", "limit"])
-    .describe("Order type. Market orders execute immediately; limit orders rest on the book"),
-  limitPrice: z.coerce.number().optional().describe('Required for limit orders: the limit price (e.g. "50000")'),
-  marginType: z
-    .enum(["isolated", "cross"])
-    .default("isolated")
-    .describe("Margin type: 'isolated' (default) limits risk to this position; 'cross' shares account balance"),
-  reduceOnly: z
-    .union([z.boolean(), z.stringbool()])
-    .default(false)
-    .describe("If true, the order can only reduce an existing position (default: false)"),
-}).superRefine((data, ctx) => {
-  if (data.orderType !== "limit") return;
-  const lp = data.limitPrice;
-  if (lp === undefined || !Number.isFinite(lp) || lp <= 0) {
-    ctx.addIssue({
-      code: "custom",
-      message: "limitPrice must be a positive number",
-      path: ["limitPrice"],
-    });
-  }
-});
+const OpenPerpPositionSchema = z
+  .object({
+    market: z
+      .string()
+      .trim()
+      .min(1, { message: "market is required" })
+      .describe('Market symbol (e.g. "BTC", "ETH", "SOL")'),
+    direction: z.enum(["long", "short"]).describe("Position direction"),
+    sizeUsd: z.coerce
+      .number()
+      .refine(n => Number.isFinite(n) && n > 0, { message: "sizeUsd must be a positive number" })
+      .describe('Position size in USD (e.g. "100" for $100 notional value)'),
+    leverage: z.coerce
+      .number()
+      .refine(n => Number.isFinite(n) && n >= 1, { message: "leverage must be a finite number >= 1" })
+      .describe("Leverage multiplier (e.g. 1 for 1x, 10 for 10x)"),
+    orderType: z
+      .enum(["market", "limit"])
+      .describe("Order type. Market orders execute immediately; limit orders rest on the book"),
+    limitPrice: z.coerce.number().optional().describe('Required for limit orders: the limit price (e.g. "50000")'),
+    marginType: z
+      .enum(["isolated", "cross"])
+      .default("isolated")
+      .describe("Margin type: 'isolated' (default) limits risk to this position; 'cross' shares account balance"),
+    reduceOnly: z
+      .union([z.boolean(), z.stringbool()])
+      .default(false)
+      .describe("If true, the order can only reduce an existing position (default: false)"),
+    walletId: WalletIdSchema.describe("Optional wallet ID (defaults to authenticated wallet)"),
+    derivationIndex: DerivationIndexSchema.describe("Optional derivation index for the account (default: 0)"),
+  })
+  .superRefine((data, ctx) => {
+    if (data.orderType !== "limit") return;
+    const lp = data.limitPrice;
+    if (lp === undefined || !Number.isFinite(lp) || lp <= 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: "limitPrice must be a positive number",
+        path: ["limitPrice"],
+      });
+    }
+  });
 
 const openPerpPositionAction = createAction({
   description:
@@ -66,7 +70,7 @@ const openPerpPositionAction = createAction({
     },
   },
   run: async ({ options: params, var: context }) => {
-    const walletId = params.walletId(context.manager);
+    const walletId = params.walletId ?? context.manager.getSession().walletId;
     const perps = await createPerpsClient(context, walletId, params.derivationIndex);
 
     context.logger.info(

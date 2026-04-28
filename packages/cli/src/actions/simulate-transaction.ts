@@ -8,10 +8,10 @@ import { Cli, z } from "incur";
 import { createAction } from "../utils/actions.js";
 import { getSolanaAddress } from "../utils/solana.js";
 import { getEthereumAddress } from "../utils/evm.js";
-import { runSimulation } from "../utils/simulation.js";
-import { WalletSchema, Caip2ChainIdSchema } from "../utils/schemas.js";
+import { runSimulation, ScannedResultSchema } from "../utils/simulation.js";
+import { WalletIdSchema, DerivationIndexSchema, Caip2ChainIdSchema } from "../utils/schemas.js";
 
-const SimulateTransactionSchema = WalletSchema.safeExtend({
+const SimulateTransactionSchema = z.object({
   chainId: Caip2ChainIdSchema.describe(
     "CAIP-2 chain ID for the transaction. " +
       "Solana: 'solana:mainnet' | 'solana:devnet'. " +
@@ -42,9 +42,11 @@ const SimulateTransactionSchema = WalletSchema.safeExtend({
     .optional()
     .default("en")
     .describe("Response language code (e.g. 'en', 'es', 'ja'). Defaults to 'en'."),
+  derivationIndex: DerivationIndexSchema.describe("HD wallet derivation index for address lookup (default: 0)."),
+  walletId: WalletIdSchema.describe("Optional wallet ID (defaults to authenticated wallet)"),
 });
 
-const SimulateTransactionOutputSchema = z.unknown();
+const SimulateTransactionOutputSchema = ScannedResultSchema;
 
 const simulateTransactionAction = createAction({
   description:
@@ -73,18 +75,19 @@ const simulateTransactionAction = createAction({
   },
   run: async ({ options: params, var: context }) => {
     const { logger } = context;
+    const session = context.manager.getSession();
 
     const chainId = params.chainId;
     const txType = params.type;
     const txParams = params.params;
     const language = params.language;
+    const walletId = params.walletId ?? session.walletId;
+    const derivationIndex = params.derivationIndex;
 
     // Auto-derive userAccount if not provided
     let userAccount = params.userAccount;
 
     if (!userAccount) {
-      const walletId = params.walletId(context.manager);
-      const derivationIndex = params.derivationIndex;
       const normalizedChain = chainId.toLowerCase();
       if (normalizedChain.startsWith("solana:")) {
         userAccount = await getSolanaAddress(context, walletId, derivationIndex);

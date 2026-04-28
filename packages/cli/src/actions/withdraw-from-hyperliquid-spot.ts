@@ -15,10 +15,16 @@ import { getEthereumAddress } from "../utils/evm.js";
 import { getSolanaAddress } from "../utils/solana.js";
 import { isSolanaChain } from "@phantom/utils";
 import { normalizeSwapperChainId } from "../utils/network.js";
-import { WalletSchema, Caip2ChainIdSchema, Caip19Schema, PositiveNumericStringSchema } from "../utils/schemas.js";
+import {
+  WalletIdSchema,
+  DerivationIndexSchema,
+  Caip2ChainIdSchema,
+  Caip19Schema,
+  PositiveNumericStringSchema,
+} from "../utils/schemas.js";
 import { WithdrawFromSpotResultSchema } from "../utils/output-schemas.js";
 
-const WithdrawFromHyperliquidSpotSchema = WalletSchema.safeExtend({
+const WithdrawFromHyperliquidSpotSchema = z.object({
   amountUsdc: PositiveNumericStringSchema.describe('Amount of USDC to bridge out (e.g. "8.0" for 8 USDC)'),
   destinationChainId: Caip2ChainIdSchema.describe(
     'Destination chain CAIP-2 ID. Examples: "solana:mainnet", "eip155:8453" (Base), ' +
@@ -32,6 +38,8 @@ const WithdrawFromHyperliquidSpotSchema = WalletSchema.safeExtend({
     .union([z.boolean(), z.stringbool()])
     .default(false)
     .describe("If false (default), returns the quote only. If true, signs and broadcasts immediately."),
+  walletId: WalletIdSchema.describe("Optional wallet ID (defaults to authenticated wallet)"),
+  derivationIndex: DerivationIndexSchema.describe("Optional derivation index (default: 0)"),
 });
 
 const WithdrawFromHyperliquidSpotOutputSchema = z.union([
@@ -69,8 +77,9 @@ const withdrawFromHyperliquidSpotAction = createAction({
   },
   run: async ({ options: params, var: context }) => {
     const { logger } = context;
+    const session = context.manager.getSession();
 
-    const walletId = params.walletId(context.manager);
+    const walletId = params.walletId ?? session.walletId;
 
     const derivationIndex = params.derivationIndex;
     const execute = params.execute;

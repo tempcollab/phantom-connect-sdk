@@ -10,16 +10,18 @@
  * via the Phantom /swap/v2/spot/funding endpoint — that is not handled here.
  */
 
-import { Cli } from "incur";
+import { Cli, z } from "incur";
 import { createAction } from "../utils/actions.js";
 import { createPerpsClient } from "../utils/perps.js";
-import { WalletSchema, PositiveNumericStringSchema } from "../utils/schemas.js";
+import { WalletIdSchema, DerivationIndexSchema, PositiveNumericStringSchema } from "../utils/schemas.js";
 import { ActionResponseSchema } from "../utils/output-schemas.js";
 
-const TransferSpotToPerpsSchema = WalletSchema.safeExtend({
+const TransferSpotToPerpsSchema = z.object({
   amountUsdc: PositiveNumericStringSchema.describe(
     'Amount of USDC to move from spot to perps (e.g. "100" for 100 USDC)',
   ),
+  walletId: WalletIdSchema.describe("Optional wallet ID (defaults to authenticated wallet)"),
+  derivationIndex: DerivationIndexSchema.describe("Optional derivation index (default: 0)"),
 });
 
 const transferSpotToPerpsAction = createAction({
@@ -41,7 +43,7 @@ const transferSpotToPerpsAction = createAction({
     },
   },
   run: async ({ options: params, var: context }) => {
-    const walletId = params.walletId(context.manager);
+    const walletId = params.walletId ?? context.manager.getSession().walletId;
     const perps = await createPerpsClient(context, walletId, params.derivationIndex);
 
     context.logger.info(`Transferring ${params.amountUsdc} USDC from Hyperliquid spot → perps`);

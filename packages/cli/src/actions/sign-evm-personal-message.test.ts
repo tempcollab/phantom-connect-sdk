@@ -19,7 +19,7 @@ const makeContext = (overrides: Record<string, unknown> = {}) => {
     client,
     session,
     logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
-    manager: { resetSession: jest.fn(), getClient: () => client, getSession: () => session, isInitialized: () => true },
+    manager: { resetSession: jest.fn(), getClient: () => client, getSession: () => session },
   };
 };
 

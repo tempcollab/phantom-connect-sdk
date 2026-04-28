@@ -36,7 +36,6 @@ const makeContext = (overrides: Record<string, unknown> = {}) => {
     manager: {
       getClient: () => client,
       getSession: () => session,
-      isInitialized: () => true,
     },
   };
 };

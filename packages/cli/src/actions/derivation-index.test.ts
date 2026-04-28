@@ -45,7 +45,6 @@ function createContext(clientOverrides: Record<string, unknown> = {}): ToolConte
       resetSession: jest.fn(),
       getClient: () => client,
       getSession: () => session,
-      isInitialized: () => true,
     } as unknown as ToolContext["manager"],
   };
 }

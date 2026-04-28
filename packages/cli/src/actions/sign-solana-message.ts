@@ -10,12 +10,14 @@ import type { NetworkId } from "@phantom/client";
 import { isSolanaChain } from "@phantom/utils";
 import { createAction } from "../utils/actions.js";
 import { normalizeNetworkId } from "../utils/network.js";
-import { WalletSchema, SolanaCaip2ChainIdSchema } from "../utils/schemas.js";
+import { WalletIdSchema, DerivationIndexSchema, SolanaCaip2ChainIdSchema } from "../utils/schemas.js";
 import { SignatureOutputSchema } from "../utils/output-schemas.js";
 
-const SignSolanaMessageSchema = WalletSchema.safeExtend({
+const SignSolanaMessageSchema = z.object({
   message: z.string().describe("The UTF-8 message to sign"),
   networkId: SolanaCaip2ChainIdSchema.describe('Solana network identifier (e.g., "solana:mainnet", "solana:devnet")'),
+  derivationIndex: DerivationIndexSchema.describe("Optional derivation index for the account (default: 0)"),
+  walletId: WalletIdSchema.describe("Optional wallet ID (defaults to authenticated wallet)"),
 });
 
 const signSolanaMessageAction = createAction({
@@ -33,6 +35,8 @@ const signSolanaMessageAction = createAction({
   },
   run: async ({ options: params, var: context }) => {
     const { logger } = context;
+    const client = context.manager.getClient();
+    const session = context.manager.getSession();
 
     const networkId = normalizeNetworkId(params.networkId) as NetworkId;
     if (!isSolanaChain(networkId)) {
@@ -41,8 +45,7 @@ const signSolanaMessageAction = createAction({
       );
     }
 
-    const walletId = params.walletId(context.manager);
-    const client = context.manager.getClient();
+    const walletId = params.walletId ?? session.walletId;
 
     logger.info(`Signing Solana message for wallet ${walletId} on ${networkId}`);
 

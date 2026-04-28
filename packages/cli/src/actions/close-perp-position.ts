@@ -7,10 +7,10 @@
 import { Cli, z } from "incur";
 import { createAction } from "../utils/actions.js";
 import { createPerpsClient } from "../utils/perps.js";
-import { WalletSchema, PercentageSchema } from "../utils/schemas.js";
+import { WalletIdSchema, DerivationIndexSchema, PercentageSchema } from "../utils/schemas.js";
 import { ActionResponseSchema } from "../utils/output-schemas.js";
 
-const ClosePerpPositionSchema = WalletSchema.safeExtend({
+const ClosePerpPositionSchema = z.object({
   market: z
     .string()
     .trim()
@@ -19,6 +19,8 @@ const ClosePerpPositionSchema = WalletSchema.safeExtend({
   sizePercent: PercentageSchema.min(1)
     .default(100)
     .describe("Percentage of position to close (1–100, default: 100 for full close)"),
+  walletId: WalletIdSchema.describe("Optional wallet ID (defaults to authenticated wallet)"),
+  derivationIndex: DerivationIndexSchema.describe("Optional derivation index (default: 0)"),
 });
 
 const closePerpPositionAction = createAction({
@@ -37,7 +39,7 @@ const closePerpPositionAction = createAction({
     },
   },
   run: async ({ options: params, var: context }) => {
-    const walletId = params.walletId(context.manager);
+    const walletId = params.walletId ?? context.manager.getSession().walletId;
     const perps = await createPerpsClient(context, walletId, params.derivationIndex);
 
     context.logger.info(`Closing ${params.sizePercent}% of ${params.market} perp position`);

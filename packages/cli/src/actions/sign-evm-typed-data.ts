@@ -14,10 +14,10 @@ import { validateEip712TypedData } from "@phantom/parsers";
 import { chainIdToNetworkId } from "@phantom/constants";
 import { createAction } from "../utils/actions.js";
 import { parseChainId } from "../utils/params.js";
-import { WalletSchema, EvmChainIdSchema } from "../utils/schemas.js";
+import { WalletIdSchema, DerivationIndexSchema, EvmChainIdSchema } from "../utils/schemas.js";
 import { SignatureOutputSchema } from "../utils/output-schemas.js";
 
-const SignEvmTypedDataSchema = WalletSchema.safeExtend({
+const SignEvmTypedDataSchema = z.object({
   typedData: z
     .object({
       types: z
@@ -35,6 +35,8 @@ const SignEvmTypedDataSchema = WalletSchema.safeExtend({
   chainId: EvmChainIdSchema.describe(
     "EVM chain ID (e.g. 1 for Ethereum mainnet, 8453 for Base, 137 for Polygon, 42161 for Arbitrum, 143 for Monad). Matches the chainId field from DeFi aggregators.",
   ),
+  derivationIndex: DerivationIndexSchema.describe("Optional derivation index for the account (default: 0)"),
+  walletId: WalletIdSchema.describe("Optional wallet ID (defaults to authenticated wallet)"),
 });
 
 const signEvmTypedDataAction = createAction({
@@ -53,6 +55,7 @@ const signEvmTypedDataAction = createAction({
   run: async ({ options: params, var: context }) => {
     const { logger } = context;
     const client = context.manager.getClient();
+    const session = context.manager.getSession();
 
     const chainId = parseChainId(params.chainId);
     const networkId = chainIdToNetworkId(chainId);
@@ -83,7 +86,7 @@ const signEvmTypedDataAction = createAction({
       }
     }
 
-    const walletId = params.walletId(context.manager);
+    const walletId = params.walletId ?? session.walletId;
 
     logger.info(`Signing EIP-712 typed data for wallet ${walletId} on ${networkId}`);
 

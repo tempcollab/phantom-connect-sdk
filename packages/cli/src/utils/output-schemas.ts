@@ -8,6 +8,8 @@
 import type { ActionResponse, WithdrawFromSpotResult } from "@phantom/perps-client";
 import { z } from "incur";
 
+import { ScannedResultSchema } from "./simulation.js";
+
 /**
  * Generic response from Hyperliquid write operations (open/close/cancel/leverage/transfer).
  */
@@ -23,7 +25,7 @@ assertType<z.infer<typeof ActionResponseSchema>, ActionResponse>();
  */
 export const PendingConfirmationSchema = z.object({
   status: z.literal("pending_confirmation"),
-  simulation: z.unknown(),
+  simulation: ScannedResultSchema.nullable(),
 });
 
 /**

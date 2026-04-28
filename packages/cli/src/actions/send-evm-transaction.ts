@@ -17,10 +17,16 @@ import { getEthereumAddress, estimateGas, fetchGasPrice, fetchNonce } from "../u
 import { resolveEvmRpcUrl } from "../utils/rpc.js";
 import { parseChainId } from "../utils/params.js";
 import { runSimulation } from "../utils/simulation.js";
-import { WalletSchema, EvmChainIdSchema, EthereumAddressSchema, HexStringSchema } from "../utils/schemas.js";
+import {
+  WalletIdSchema,
+  DerivationIndexSchema,
+  EvmChainIdSchema,
+  EthereumAddressSchema,
+  HexStringSchema,
+} from "../utils/schemas.js";
 import { PendingConfirmationSchema } from "../utils/output-schemas.js";
 
-const SendEvmTransactionSchema = WalletSchema.safeExtend({
+const SendEvmTransactionSchema = z.object({
   chainId: EvmChainIdSchema.describe(
     'EVM chain ID as a number or string (e.g. 8453, "8453", or "0x2105" for Base). This is the chainId field returned directly by DeFi aggregators.',
   ),
@@ -52,6 +58,8 @@ const SendEvmTransactionSchema = WalletSchema.safeExtend({
   type: HexStringSchema.optional().describe(
     'Hex-encoded transaction type (e.g. "0x0" for legacy, "0x2" for EIP-1559, "0x3" for blob). Inferred automatically if omitted.',
   ),
+  walletId: WalletIdSchema.describe("Optional wallet ID (defaults to authenticated wallet)"),
+  derivationIndex: DerivationIndexSchema.describe("Optional derivation index for the account (default: 0)"),
   rpcUrl: z.string().optional().describe("Optional EVM RPC URL override. Defaults are provided for common networks."),
   confirmed: z
     .union([z.boolean(), z.stringbool()])
@@ -91,6 +99,8 @@ const sendEvmTransactionAction = createAction({
   },
   run: async ({ options: params, var: context }) => {
     const { logger } = context;
+    const client = context.manager.getClient();
+    const session = context.manager.getSession();
 
     const chainId = parseChainId(params.chainId);
 
@@ -101,8 +111,7 @@ const sendEvmTransactionAction = createAction({
       );
     }
 
-    const walletId = params.walletId(context.manager);
-    const client = context.manager.getClient();
+    const walletId = params.walletId ?? session.walletId;
 
     const rpcUrl = resolveEvmRpcUrl(networkId, params.rpcUrl);
 

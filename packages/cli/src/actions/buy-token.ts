@@ -14,10 +14,10 @@ import { getEthereumAddress } from "../utils/evm.js";
 import { parseBaseUnitAmount, parseUiAmount, requirePositiveAmount } from "../utils/amount.js";
 import { validateTokenAddress, buildTokenObject, fetchSwapQuote, executeSwap } from "../utils/swap.js";
 import { resolveSolanaRpcUrl } from "../utils/rpc.js";
-import { WalletSchema, Caip2ChainIdSchema, PercentageSchema } from "../utils/schemas.js";
+import { WalletIdSchema, DerivationIndexSchema, Caip2ChainIdSchema, PercentageSchema } from "../utils/schemas.js";
 import { BuyTokenOutputSchema } from "../utils/output-schemas.js";
 
-const BuyTokenSchema = WalletSchema.safeExtend({
+const BuyTokenSchema = z.object({
   sellChainId: Caip2ChainIdSchema.optional()
     .default("solana:mainnet")
     .describe(
@@ -106,6 +106,8 @@ const BuyTokenSchema = WalletSchema.safeExtend({
     .string()
     .optional()
     .describe("Optional Solana RPC URL (for mint decimals lookup when amountUnit is 'ui' on Solana)"),
+  derivationIndex: DerivationIndexSchema.describe("Optional derivation index for the taker address (default: 0)"),
+  walletId: WalletIdSchema.describe("Optional wallet ID (defaults to authenticated wallet)"),
 });
 
 const buyTokenAction = createAction({
@@ -136,6 +138,7 @@ const buyTokenAction = createAction({
   },
   run: async ({ options: params, var: context }) => {
     const { logger } = context;
+    const session = context.manager.getSession();
 
     // --- Chain resolution ---
     const rawSellChain = params.sellChainId;
@@ -162,7 +165,7 @@ const buyTokenAction = createAction({
     }
 
     const amount = params.amount;
-    const walletId = params.walletId(context.manager);
+    const walletId = params.walletId ?? session.walletId;
 
     const derivationIndex = params.derivationIndex;
     const amountUnit = params.amountUnit;

@@ -4,9 +4,11 @@
 
 import { Cli, z } from "incur";
 import { createAction } from "../utils/actions.js";
-import { WalletSchema } from "../utils/schemas.js";
+import { DerivationIndexSchema } from "../utils/schemas.js";
 
-const GetWalletAddressesSchema = WalletSchema;
+const GetWalletAddressesSchema = z.object({
+  derivationIndex: DerivationIndexSchema.describe("Optional derivation index for the addresses (default: 0)"),
+});
 
 const WalletAddressesSchema = z.object({
   walletId: z.string(),
@@ -40,7 +42,6 @@ const getWalletAddressesAction = createAction({
   },
   run: async ({ options: params, var: context }) => {
     const { logger } = context;
-    const walletId = params.walletId(context.manager);
     const client = context.manager.getClient();
     const session = context.manager.getSession();
 
@@ -49,7 +50,7 @@ const getWalletAddressesAction = createAction({
     try {
       // Call PhantomClient to get wallet addresses
       const addresses = await client.getWalletAddresses(
-        walletId,
+        session.walletId,
         undefined, // Use default derivation paths (Solana, Ethereum, Bitcoin, Sui)
         params.derivationIndex,
       );
@@ -57,7 +58,7 @@ const getWalletAddressesAction = createAction({
       logger.info(`Successfully retrieved ${addresses.length} addresses`);
 
       return {
-        walletId,
+        walletId: session.walletId,
         organizationId: session.organizationId,
         addresses: addresses.map(addr => ({
           addressType: addr.addressType,

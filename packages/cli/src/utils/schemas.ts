@@ -11,57 +11,29 @@
 import { z } from "incur";
 import { getAddress } from "viem";
 import { PublicKey } from "@solana/web3.js";
-import type { SessionManager } from "../session/manager";
-import { LOGIN_COMMAND_NAME, LOGIN_TOOL_NAME } from "../actions/login";
 
 // ─── Wallet / Derivation ──────────────────────────────────────────────────────
 
 /**
- * Base schema for actions that require wallet access. Extend it instead of
- * using `z.object({...})` directly:
+ * HD wallet derivation index.
+ * No .describe() or .optional() here — add them at the call site.
+ * Using .default(0) so the field is optional from the caller's perspective.
  *
- *   const MySchema = WalletSchema.safeExtend({ ... });
- *
- * After Zod parses the input, `walletId` is a lazy resolver function — call
- * it with the `SessionManager` to get the actual wallet ID string:
- *
- *   const walletId = params.walletId(context.manager);
- *
- * If no `walletId` is provided by the caller, the resolver falls back to the
- * authenticated session's wallet ID. If the session is not initialized it adds
- * a Zod issue and returns `z.NEVER`, surfacing a clear auth error.
- *
- * `derivationIndex` is the BIP-44 HD wallet account index (default: 0). Pass a
- * higher index to address a different account derived from the same seed.
+ * @example
+ *   derivationIndex: DerivationIndexSchema.describe("Optional derivation index (default: 0)"),
  */
-export const WalletSchema = z.object({
-  walletId: z
-    .string()
-    .optional()
-    .describe("Optional wallet ID (defaults to authenticated wallet)")
-    .transform(value => {
-      return (manager: SessionManager) => {
-        if (value) {
-          return value;
-        }
-        if (!manager.isInitialized()) {
-          throw new Error(
-            `Session not initialized — call ${LOGIN_COMMAND_NAME} or ${LOGIN_TOOL_NAME} to authenticate.`,
-          );
-        }
-        return manager.getSession().walletId;
-      };
-    }),
-  derivationIndex: z.coerce
-    .number()
-    .int()
-    .min(0)
-    .default(0)
-    .refine(Number.isSafeInteger, {
-      message: "derivationIndex must be a safe integer",
-    })
-    .describe("Optional derivation index for the account (default: 0)"),
+export const DerivationIndexSchema = z.coerce.number().int().min(0).default(0).refine(Number.isSafeInteger, {
+  message: "derivationIndex must be a safe integer",
 });
+
+/**
+ * Optional wallet ID override.
+ * No .describe() — add at call site.
+ *
+ * @example
+ *   walletId: WalletIdSchema.describe("Optional wallet ID (defaults to authenticated wallet)"),
+ */
+export const WalletIdSchema = z.string().optional();
 
 // ─── Blockchain Addresses ─────────────────────────────────────────────────────
 

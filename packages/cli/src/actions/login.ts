@@ -12,10 +12,6 @@
 import { Cli, z } from "incur";
 import { createAction } from "../utils/actions.js";
 
-// Prevent circular dependency
-export const LOGIN_COMMAND_NAME = "login";
-export const LOGIN_TOOL_NAME = "phantom_login";
-
 const LoginSchema = z.object({
   displayMode: z
     .enum(["browser", "text"])

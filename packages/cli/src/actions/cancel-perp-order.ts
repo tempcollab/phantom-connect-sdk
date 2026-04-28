@@ -7,10 +7,10 @@
 import { Cli, z } from "incur";
 import { createAction } from "../utils/actions.js";
 import { createPerpsClient } from "../utils/perps.js";
-import { WalletSchema } from "../utils/schemas.js";
+import { WalletIdSchema, DerivationIndexSchema } from "../utils/schemas.js";
 import { ActionResponseSchema } from "../utils/output-schemas.js";
 
-const CancelPerpOrderSchema = WalletSchema.safeExtend({
+const CancelPerpOrderSchema = z.object({
   market: z.string().trim().min(1, { message: "market is required" }).describe('Market symbol (e.g. "BTC")'),
   orderId: z.coerce
     .number()
@@ -19,6 +19,8 @@ const CancelPerpOrderSchema = WalletSchema.safeExtend({
       message: "orderId must be a safe integer",
     })
     .describe("The numeric order ID to cancel (from get_perp_orders)"),
+  walletId: WalletIdSchema.describe("Optional wallet ID (defaults to authenticated wallet)"),
+  derivationIndex: DerivationIndexSchema.describe("Optional derivation index (default: 0)"),
 });
 
 const cancelPerpOrderAction = createAction({
@@ -35,7 +37,7 @@ const cancelPerpOrderAction = createAction({
     },
   },
   run: async ({ options: params, var: context }) => {
-    const walletId = params.walletId(context.manager);
+    const walletId = params.walletId ?? context.manager.getSession().walletId;
     const perps = await createPerpsClient(context, walletId, params.derivationIndex);
 
     context.logger.info(`Cancelling perp order ${params.orderId} on ${params.market}`);

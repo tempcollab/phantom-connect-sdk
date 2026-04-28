@@ -14,7 +14,7 @@
 import { Cli, z } from "incur";
 import { createAction } from "../utils/actions.js";
 import { buyTokenTool } from "./buy-token.js";
-import { WalletSchema, Caip2ChainIdSchema } from "../utils/schemas.js";
+import { WalletIdSchema, DerivationIndexSchema, Caip2ChainIdSchema } from "../utils/schemas.js";
 import { BuyTokenOutputSchema } from "../utils/output-schemas.js";
 
 // Hypercore chain ID used by the Phantom swapper backend
@@ -23,7 +23,7 @@ const HYPERCORE_CHAIN_ID = "hypercore:mainnet";
 // USDC on Hypercore — Relay's 16-byte representation (backend HYPERLIQUID_USDC_ADDRESS)
 const HYPERCORE_USDC_ADDRESS = "0x00000000000000000000000000000000";
 
-const DepositToHyperliquidSchema = WalletSchema.safeExtend({
+const DepositToHyperliquidSchema = z.object({
   sourceChainId: Caip2ChainIdSchema.describe(
     'Source chain CAIP-2 ID. Examples: "solana:mainnet", "eip155:42161" (Arbitrum), "eip155:8453" (Base), "eip155:1" (Ethereum), "eip155:137" (Polygon).',
   ),
@@ -51,6 +51,8 @@ const DepositToHyperliquidSchema = WalletSchema.safeExtend({
     .union([z.boolean(), z.stringbool()])
     .default(false)
     .describe("If false (default), returns the quote only. If true, signs and broadcasts immediately."),
+  walletId: WalletIdSchema.describe("Optional wallet ID (defaults to authenticated wallet)"),
+  derivationIndex: DerivationIndexSchema.describe("Optional derivation index (default: 0)"),
 });
 
 const depositToHyperliquidAction = createAction({
@@ -75,7 +77,7 @@ const depositToHyperliquidAction = createAction({
     // This reuses all quote parsing, CrossChainQuote typing, signing, and broadcasting logic.
     return buyTokenTool.handler(
       {
-        walletId: params.walletId(context.manager),
+        walletId: params.walletId,
         derivationIndex: params.derivationIndex,
         sellChainId: params.sourceChainId,
         sellTokenMint: params.sellTokenMint,
