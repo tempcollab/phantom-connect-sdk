@@ -4,7 +4,8 @@
 # Builds and verifies the live target reproducibly:
 # - Pulls and verifies the pinned Docker image by digest
 # - Checks the repo is at the pinned commit (warns if not)
-# - Installs workspace dependencies (idempotent)
+# - Installs ALL workspace dependencies (full yarn install — required for S3/S4/S5)
+# - Builds all workspace package dist/ dirs (yarn build:packages — required for S3/S4/S5)
 # - Writes PINNED_COMMIT.txt artifact
 #
 # Pinned:
@@ -15,6 +16,15 @@
 # The Docker image is pulled and verified for reproducibility, but the PoCs
 # themselves execute on the host to avoid container networking complexity.
 # To run PoCs inside the container, use the Dockerfile in this directory.
+#
+# Why full yarn install (not workspaces focus):
+#   A full install is required so (a) root devDep `turbo` is present for
+#   build:packages, and (b) every workspace's deps resolve:
+#     - browser-sdk's @phantom/* scope (S4)
+#     - parsers' ethers / @solana/transactions (S5)
+#     - cli's @modelcontextprotocol/server (S3)
+#   YN0002/YN0086 peer-dep warnings and the optional utf-8-validate
+#   native-build failure are expected and non-fatal.
 
 set -euo pipefail
 
@@ -70,7 +80,7 @@ else
 fi
 
 # ── Install workspace dependencies ───────────────────────────────────────────
-echo "[setup] Installing workspace dependencies (yarn workspaces focus)..."
+echo "[setup] Installing ALL workspace dependencies (full yarn install)..."
 export PATH="${HOME}/.local/bin:${PATH}"
 
 if ! command -v yarn &>/dev/null; then
@@ -78,20 +88,55 @@ if ! command -v yarn &>/dev/null; then
   exit 1
 fi
 
-# Focus install: get @phantom/cli and @phantom/embedded-provider-core deps
-# (including @solana/web3.js for S1 PoC)
+# Full install: required so root devDep `turbo` is present (for build:packages)
+# and every workspace's deps resolve (browser-sdk/@phantom scope for S4,
+# parsers/ethers+@solana/transactions for S5, cli/@modelcontextprotocol/server for S3).
+# YN0002/YN0086 peer-dep warnings and the optional utf-8-validate native-build
+# failure are expected — do not treat as setup failure (|| true tolerates them).
 cd "${REPO_ROOT}"
-yarn workspaces focus @phantom/cli @phantom/embedded-provider-core 2>&1 | \
-  grep -v "^➤ YN0002\|^➤ YN0060\|^➤ YN0086\|^➤ YN0066" | tail -5 || true
+yarn install 2>&1 | tail -8 || true
 
 echo "[setup] Dependency installation complete."
 
-# ── Verify tsx available ──────────────────────────────────────────────────────
-if ! npx tsx --version &>/dev/null 2>&1; then
-  echo "WARNING: 'npx tsx' not available. PoCs require tsx to run TypeScript source." >&2
-  echo "         Install with: npm install -g tsx" >&2
+# ── Build workspace package dist/ dirs ───────────────────────────────────────
+# This produces packages/*/dist/index.mjs, required because every @phantom/*
+# package exports points at ./dist/index.mjs.  Without it the S3/S4/S5 source
+# imports cannot resolve their transitive @phantom/* deps.
+# turbo builds in topological order (23 tasks), so each @phantom/* dist resolves
+# before its dependents.  DTS build warnings are non-fatal — the runtime .mjs
+# outputs are what the PoCs need.
+echo "[setup] Building workspace package dist (yarn build:packages)..."
+yarn build:packages 2>&1 | tail -12
+
+# ── Dist sanity check ─────────────────────────────────────────────────────────
+for p in parsers browser-sdk phantom-api-client base64url constants; do
+  if [[ ! -f "${REPO_ROOT}/packages/$p/dist/index.mjs" ]]; then
+    echo "[setup] WARNING: packages/$p/dist/index.mjs missing — S3/S4/S5 imports may fail" >&2
+  fi
+done
+
+# ── Ensure tsx is available for PoCs ─────────────────────────────────────────
+# tsx must be runnable as `npx tsx` without network access. After full yarn install,
+# tsx is present in packages/phantom-openclaw-plugin/node_modules/.bin/tsx.
+# If tsx is not already on PATH, create a shim in ~/.local/bin so all PoCs can
+# invoke it as `npx tsx` regardless of npx cache state (offline-safe).
+TSX_SHIM="${HOME}/.local/bin/tsx"
+TSX_WORKSPACE="${REPO_ROOT}/packages/phantom-openclaw-plugin/node_modules/.bin/tsx"
+
+if command -v tsx &>/dev/null; then
+  echo "[setup] tsx already on PATH: $(tsx --version 2>&1 | head -1)"
+elif [[ -x "${TSX_WORKSPACE}" ]]; then
+  echo "[setup] tsx not on PATH — installing shim from workspace tsx (offline-safe)"
+  mkdir -p "${HOME}/.local/bin"
+  # Symlink ~/.local/bin/tsx → workspace binary (already on PATH via setup export above)
+  ln -sf "${TSX_WORKSPACE}" "${TSX_SHIM}"
+  chmod +x "${TSX_SHIM}"
+  echo "[setup] tsx shim installed at ${TSX_SHIM}: $(tsx --version 2>&1 | head -1)"
+elif npx tsx --version &>/dev/null 2>&1; then
+  echo "[setup] tsx available via npx cache: $(npx tsx --version 2>&1 | head -1)"
 else
-  echo "[setup] tsx available: $(npx tsx --version 2>&1 | head -1)"
+  echo "WARNING: tsx not found in PATH, workspace, or npx cache. PoCs require tsx." >&2
+  echo "         Ensure yarn install completed successfully (tsx is in phantom-openclaw-plugin)." >&2
 fi
 
 # ── Verify openssl available (needed for HTTPS capture server in S1) ──────────

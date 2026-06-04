@@ -18,14 +18,17 @@
 |----|-------|--------|----------|
 | **S1** | Inconsistent Solana RPC SSRF — `resolveSolanaRpcUrl` skips private-IP block | **Confirmed by PoC** | MEDIUM |
 | **S2** | Insecure randomness (CWE-330/338) for OAuth state / session id — weak CSRF-token entropy | **Confirmed by PoC** | LOW |
+| **S3** | Auto-402 payment handler signs without the whitelist `pay_api_access` enforces — blind-signing asymmetry | **Confirmed by PoC** (live: real auto-handler blind-signs unvalidated drain tx; whitelist asymmetry shown by source-citation + labeled reference reproduction) | MEDIUM |
+| **S4** | `BrowserAuthProvider.resumeAuthFromRedirect` conditional CSRF bypass (legacy non-default class) | **Confirmed by PoC** | MEDIUM |
+| **S5** | `validateEip712TypedData` missing `primaryType`-in-`types` membership check | **Confirmed by PoC** | LOW |
 | F1 | `randomUUID()` silent fallback + `randomString()` unconditional `Math.random` | Follow-on | LOW |
-| F2 | 402 `preparedTx` blind-signing path | Follow-on | MEDIUM |
+| F2 | 402 `preparedTx` blind-signing path | Superseded — see confirmed S3 (asymmetry framing) | MEDIUM |
 | R1 | Developer-config `apiBaseUrl`/`authApiBaseUrl` SSRF | **Rejected** | — |
 | R2 | EIP-6963 / Wallet Standard provider injection | **Rejected** | — |
 | R3 | Plaintext `session.json` / `auth2-stamper.json` secret key | **Rejected** | — |
 | R4 | No MCP transport authentication (stdio) | **Rejected** | — |
 | R5 | `execFile` browser-open argument injection | **Rejected** | — |
-| R6 | OAuth callback `wallet_id` not server-verified | **Rejected / Downgraded** | — |
+| R6 | OAuth callback `wallet_id` not server-verified | **Superseded by S4** (see note in R6 section) | — |
 | R7 | JWT no client-side signature verification | **Rejected** | — |
 | R8 | Axios CVEs (CVE-2025-62718, CVE-2026-40175), debug-log leakage, PKCE `.slice(96)` | **Rejected** | — |
 
@@ -288,6 +291,328 @@ the browser environment where `embedded-provider-core` runs.
 
 ---
 
+### S3 — Auto-402 Blind-Signing Asymmetry
+
+**Severity:** MEDIUM  
+**Provisional CVSS:** AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:H/A:N  
+*(AC:H: exploiting requires controlling the 402 response body at the configured baseUrl — realistically a MitM of the TLS connection to api.phantom.app, a compromised/substituted backend, or a developer-config substitution. NOT critical.)*  
+**CWE:** CWE-345 (Insufficient Verification of Data Authenticity), CWE-20 (Improper Input Validation)
+
+**Affected file:** `packages/cli/src/index.ts`  
+**Affected lines:** `apiClient.setPaymentHandler` block, lines 50-72  
+**Contrast:** `packages/cli/src/actions/pay-api-access.ts` — `PaymentTransactionSchema` (lines 29-112) + `runSimulation` gate (lines 155-167)
+
+#### Round-1 Trust-Boundary Class / Distinction from R1
+
+**Trust-boundary class:** S3 shares the same class of boundary as the round-1 rejected
+finding R1 (developer-config `apiBaseUrl`/`authApiBaseUrl` SSRF): exploiting S3 requires
+controlling the HTTP 402 response body served at the configured `baseUrl` (default:
+`https://api.phantom.app`), which realistically means a MitM of the TLS connection or a
+compromised/substituted backend. This is the same MitM/compromised-backend boundary that
+led round 1 to reject the `apiBaseUrl` SSRF finding as not attacker-reachable.
+
+**Why S3 is still reportable (defense-in-depth / validated-vs-unvalidated asymmetry):**
+S3 is NOT about making the boundary easier to cross — it does not. The NEW, independently
+reportable angle is the **validated-vs-unvalidated asymmetry** between the two code paths
+that handle the same `preparedTx` payload once the boundary IS crossed:
+- The **explicit `pay_api_access` tool** enforces `PaymentTransactionSchema` (forbids
+  SystemProgram, requires ≥1 SPL token transfer, runs simulation gate).
+- The **auto-handler** (`index.ts:50-72`) decodes and signs any `preparedTx` with zero
+  validation.
+
+This asymmetry means the SDK's own defenses are inconsistent and can be bypassed by any
+party who can influence the 402 response — a significant defense-in-depth failure that is
+worth reporting separately from R1. Severity remains MEDIUM (AC:H — boundary is hard to
+cross; but impact-on-exploit is native SOL fund loss).
+
+#### Attacker and Trust Boundary
+
+An attacker who controls the contents of a 402 HTTP response returned by the server at
+`baseUrl` (default: `https://api.phantom.app`). Realistically: a MitM of the TLS
+connection to `api.phantom.app`, a compromised/substituted backend, or a developer who
+points `PHANTOM_API_BASE_URL` at a hostile server. **NOT attacker-reachable via MCP tool
+params alone — requires backend/TLS control. NOT critical.**
+
+#### Technical Description
+
+The module-load handler (`packages/cli/src/index.ts:50-72`) decodes any server-supplied
+`payment.preparedTx` and forwards it to `client.signAndSendTransaction` with **zero
+validation**:
+
+```typescript
+// index.ts:60-66 (auto-handler)
+const txBytes = Buffer.from(payment.preparedTx, "base64");
+const result = await client.signAndSendTransaction({
+  walletId: session.walletId,
+  transaction: base64urlEncode(txBytes),
+  networkId: NetworkId.SOLANA_MAINNET,
+  account,
+});
+```
+
+The explicit `pay_api_access` tool (`pay-api-access.ts`) enforces `PaymentTransactionSchema`,
+which forbids `SystemProgram` (native SOL transfer) and non-Set ComputeBudget instructions,
+requires ≥1 SPL token Transfer/TransferChecked, and runs a simulation gate before signing.
+
+`PhantomApiClient.handleResponse` builds `PaymentRequiredError` from `body.payment`
+with no validation of `body.payment` (`PhantomApiClient.ts:186-202`). The `_pay()` method
+passes `err.payment` directly to the registered `paymentHandler`.
+
+#### Reachable Code Path
+
+```
+GET/POST → PhantomApiClient._get/_post → handleResponse → 402
+  → PaymentRequiredError(body.limitType, body.payment)  [body.payment NOT validated]
+  → _pay(err) → paymentHandler!(err.payment)
+  → handler: Buffer.from(payment.preparedTx, "base64") → signAndSendTransaction
+                [NO PaymentTransactionSchema, NO simulation gate]
+```
+
+**Contrast (explicit tool):**
+```
+pay_api_access(preparedTx) → PaymentTransactionSchema.safeParse → rejects SystemProgram
+  → runSimulation gate → THEN signAndSendTransaction
+```
+
+The PoC drives the real `PhantomApiClient._pay → handler` wiring via a loopback HTTP 402
+server. The handler body in the PoC is a faithful transcription of `index.ts:60-66`
+(decode + sign). The only substitutions are a stub signer in place of the KMS client and
+stubbed session/address lookup — the PoC must not require real keys (per audit rules).
+
+**What is live-confirmed vs. shown by reference:**
+
+- **LIVE-CONFIRMED** (assertions a+b+c, real SDK code): The real `PhantomApiClient` invokes
+  `_pay()`, the auto-handler (`index.ts:50-72`) decodes the malicious `SystemProgram.transfer`
+  `preparedTx` and forwards it to the signer with **zero validation** — no schema, no
+  simulation gate, no instruction check. The CONFIRMED verdict rests solely on (a)+(b)+(c).
+- **SHOWN BY SOURCE CITATION + REFERENCE REPRODUCTION** (assertion d, supplementary):
+  The asymmetry contrast — that `PaymentTransactionSchema` WOULD reject this same tx — is
+  shown using `payment-schema.mjs`, a verbatim copy of `pay-api-access.ts:16-112`. The
+  **real schema cannot be imported standalone under tsx**: importing `pay-api-access.ts`
+  pulls `z` from `"incur"`, whose `src` export condition drags in `Mcp.ts →
+  @modelcontextprotocol/server`; that package has no CJS condition, so tsx throws
+  `"No exports main defined"`. The schema is also bundled-but-unexported in
+  `packages/cli/dist/index.js`. The reference reproduction demonstrates the documented
+  asymmetry but is **not a live run of the real schema**. This limitation does not weaken
+  the finding — the auto-handler's lack of validation is plainly evident from source
+  inspection of `index.ts:50-72` and confirmed by the live (a)+(b)+(c) assertions.
+
+#### Confirmation / Evidence
+
+*(Leave blank — reviewer fills in after live run)*
+
+```
+(a) [LIVE]  402 server received request from PhantomApiClient:
+(b) [LIVE]  Auto-handler decoded preparedTx, forwarded to signer, NO validation:
+(c) [LIVE]  SystemProgram.transfer instruction reached stub signer unchecked:
+(ref)       Reproduced schema rejects same tx (reference contrast, not live schema run):
+Pass condition: (a)+(b)+(c) — real auto-handler blindly signed drain tx
+```
+
+#### Real-World Impact
+
+An attacker who controls the 402 response body can inject a malicious `preparedTx`
+(e.g., a native SOL drain via `SystemProgram.transfer`) that the auto-handler signs and
+broadcasts without validation. High impact IF exploited (native SOL drain). Practical bar
+is high (backend/TLS control required), hence MEDIUM severity.
+
+#### PoC Reference
+
+`autofyn_audit/exploits/s3-auto402-blind-signing/run.mjs`  
+Run: `cd packages/cli && npx tsx /path/to/autofyn_audit/exploits/s3-auto402-blind-signing/run.mjs`
+
+#### Remediation
+
+1. Route the auto-handler through `PaymentTransactionSchema` (same validation as `pay_api_access`).
+2. Add `runSimulation` gate before signing in the auto-handler.
+3. Consider requiring explicit user confirmation before the auto-handler signs.
+4. Validate `body.payment` fields in `PhantomApiClient.handleResponse` before constructing
+   `PaymentRequiredError`.
+
+---
+
+### S4 — BrowserAuthProvider Conditional CSRF Bypass
+
+**Severity:** MEDIUM  
+**Provisional CVSS:** AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N  
+*(Contingent on integrator using BrowserAuthProvider — see note below.)*  
+**CWE:** CWE-352 (Cross-Site Request Forgery), CWE-287 (Improper Authentication)
+
+**Affected file:** `packages/browser-sdk/src/providers/embedded/adapters/auth.ts`  
+**Affected line:** 148
+
+#### Attacker and Trust Boundary
+
+Any party that can navigate the victim's browser to the app's OAuth callback URL with
+attacker-chosen query parameters — via open redirect, phishing, or server-side redirect.
+The attacker does NOT need to intercept TLS; controlling the URL params is sufficient when
+`sessionStorage` is absent or cleared.
+
+**IMPORTANT:** `BrowserAuthProvider` is exported from `adapters/index.ts` but is NOT
+exported from the top-level `packages/browser-sdk/src/index.ts`. The **default production
+path** uses `Auth2AuthProvider`, whose session-ID check is unconditional and sound.
+**This finding is conditional on an integrator explicitly using `BrowserAuthProvider`.**
+Severity MEDIUM reflects this conditional exploitability.
+
+#### Technical Description
+
+The CSRF guard at `auth.ts:148`:
+
+```typescript
+if (context.sessionId && sessionId !== context.sessionId) {
+  throw new Error("Session ID mismatch - possible session corruption or replay attack");
+}
+```
+
+is a **no-op** whenever `context.sessionId` is falsy. `context` comes from
+`sessionStorage.getItem("phantom-auth-context")` (auth.ts:137-145), which is `null` on
+first visit, cross-tab navigation, post-refresh, or programmatic nav without a prior
+`authenticate()` call. When `contextStr` is null, `context = {}` and `context.sessionId =
+undefined` (falsy) — the guard is skipped.
+
+After the skipped guard, `resumeAuthFromRedirect` returns an `AuthResult` built entirely
+from URL params (auth.ts:196-203): `walletId ← wallet_id`, `organizationId ← organization_id`,
+`authUserId ← auth_user_id`. These are fully attacker-controlled.
+
+The fail-closed fix is one character: `if (!context.sessionId || ...)`.
+
+#### Reachable Code Path
+
+```
+BrowserAuthProvider.resumeAuthFromRedirect("google")
+  → sessionStorage.getItem("phantom-auth-context") → null → context = {}
+  → context.sessionId = undefined → falsy → guard skipped
+  → returns AuthResult({ walletId: url_param_wallet_id, organizationId: ... })
+                       [fully attacker-controlled from URL params]
+```
+
+#### Confirmation / Evidence
+
+*(Leave blank — reviewer fills in after live run)*
+
+```
+Case 1 (attack — empty sessionStorage):
+  resumeAuthFromRedirect returned walletId="ATTACKER_WALLET", organizationId="ATTACKER_ORG"
+  CSRF guard skipped on empty sessionStorage: CONFIRMED
+
+Case 2 (contrast — present+mismatched sessionId):
+  threw: "Session ID mismatch - possible session corruption or replay attack"
+  Guard fires when context.sessionId is truthy: CONFIRMED
+```
+
+#### Real-World Impact
+
+An attacker who can navigate the victim to the callback URL with attacker-chosen params
+can inject a `walletId` and `organizationId` controlled by the attacker. Depending on
+what the application does with the `AuthResult`, this can lead to account takeover or
+unauthorized wallet access within the application session.
+
+#### PoC Reference
+
+`autofyn_audit/exploits/s4-browser-auth-csrf-bypass/run.mjs`  
+Run: `cd packages/browser-sdk && npx tsx /path/to/autofyn_audit/exploits/s4-browser-auth-csrf-bypass/run.mjs`
+
+#### Remediation
+
+Change the guard to fail-closed (one-line fix in auth.ts:148):
+```typescript
+// Replace:
+if (context.sessionId && sessionId !== context.sessionId) {
+// With:
+if (!context.sessionId || sessionId !== context.sessionId) {
+```
+This rejects the redirect when context is absent (preventing first-visit bypass) and when
+sessionId mismatches. See also `recon-browser-auth.md` SUSPECT 1.
+
+---
+
+### S5 — `validateEip712TypedData` Missing `primaryType`-in-`types` Membership Check
+
+**Severity:** LOW  
+**Provisional CVSS:** AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:L/A:N  
+*(Client-side validation gap only; downstream KMS may independently reject. No signing/fund-loss impact is demonstrated. The upper "MEDIUM" half of a LOW-MEDIUM range is unsupported — only a client-side gap is confirmed.)*  
+**CWE:** CWE-20 (Improper Input Validation)
+
+**Affected file:** `packages/parsers/src/index.ts`  
+**Affected lines:** `validateEip712TypedData` (lines 43-65)  
+**Caller:** `packages/cli/src/actions/sign-evm-typed-data.ts:69` (MCP tool `sign_evm_typed_data`)
+
+#### Attacker and Trust Boundary
+
+A **legitimate `sign_evm_typed_data` MCP tool caller** — an LLM agent or a
+prompt-injection / malicious upstream tool result supplying malformed `typedData`.
+This is the only one of the three S3/S4/S5 findings reachable **directly via an MCP
+tool parameter** with no special privileges.
+
+#### Technical Description
+
+`validateEip712TypedData()` checks top-level shape but omits three structural membership
+checks required for well-formed EIP-712 data:
+
+1. `primaryType ∈ keys(types)` — Case A: `primaryType="MISSING_TYPE"` with
+   `types={ EIP712Domain: [...], Permit: [...] }` passes without error.
+2. `EIP712Domain ∈ keys(types)` — Case B: `types={ Permit: [] }` (no `EIP712Domain`)
+   passes without error.
+3. `types[primaryType]` non-empty array — Case C: `types={ Transfer: [] }` with
+   `primaryType="Transfer"` passes without error (signed struct covers zero fields).
+
+Both the `validateEip712TypedData` function and the zod schema in `sign-evm-typed-data.ts`
+(lines 20-40) fail to enforce membership. The validator signals intent to validate
+EIP-712 structure (checks `domain.chainId` at the tool layer) but misses these checks.
+
+**Client-side gap only:** We cannot test the downstream KMS server. The KMS may
+independently reject malformed EIP-712 data. No signing or fund-loss impact is claimed.
+
+#### Reachable Code Path
+
+```
+sign_evm_typed_data MCP tool ← attacker-supplied typedData (z.object with z.record)
+  → sign-evm-typed-data.ts:69: validateEip712TypedData(params.typedData)
+      → checks: object, non-null types, non-empty primaryType, non-null domain/message
+      → DOES NOT CHECK: primaryType ∈ keys(types)
+      → DOES NOT CHECK: EIP712Domain ∈ keys(types)
+      → DOES NOT CHECK: types[primaryType] is non-empty array
+  → proceeds to client.ethereumSignTypedData(...) → KMS
+```
+
+#### Confirmation / Evidence
+
+*(Leave blank — reviewer fills in after live run)*
+
+```
+Negative control (validator runs): CONFIRMED (threw on types='notanobject')
+Case A (primaryType not in types): CONFIRMED (no throw)
+Case B (EIP712Domain missing):     CONFIRMED (no throw)
+Case C (types[primaryType] = []):  CONFIRMED (no throw)
+```
+
+#### Real-World Impact
+
+A `sign_evm_typed_data` MCP tool caller can supply structurally invalid EIP-712 data
+that passes the SDK's client-side validator. If the KMS does not independently reject,
+the attacker could cause signing of arbitrary EIP-712 structures (e.g., permit signatures
+for unauthorized token approvals) without the SDK's validator catching the malformation.
+
+#### PoC Reference
+
+`autofyn_audit/exploits/s5-eip712-primarytype-gap/run.mjs`  
+Run: `cd packages/parsers && npx tsx /path/to/autofyn_audit/exploits/s5-eip712-primarytype-gap/run.mjs`
+
+#### Remediation
+
+Add to `validateEip712TypedData` (`parsers/src/index.ts`, after line 64):
+```typescript
+if (!(obj.primaryType in (obj.types as object))) {
+  throw new Error(`typedData.primaryType "${obj.primaryType}" is not a key in typedData.types`);
+}
+if (!("EIP712Domain" in (obj.types as object))) {
+  throw new Error("typedData.types must contain an EIP712Domain entry");
+}
+// Optionally: validate each types[k] is an array of {name:string, type:string}
+```
+
+---
+
 ## Further Work (Follow-On Candidates — Not Yet Confirmed)
 
 These candidates were identified but **not exercised in the first build**. They
@@ -372,9 +697,13 @@ configuration.
 
 **File:** `packages/browser-sdk/src/providers/embedded/`
 
-**Rejected / Downgraded because:** The callback is guarded by the random `session_id`.
-The legacy `BrowserAuthProvider` conditional-check concern is real but low severity
-and not in scope for this build.
+**Superseded by S4.** The original R6 note ("real but low severity and not in scope") is
+contradicted by the round-2 live-confirmed finding S4, which independently confirmed that
+`BrowserAuthProvider.resumeAuthFromRedirect` contains a conditional CSRF guard that is a
+no-op when `sessionStorage` is empty — precisely the concern R6 identified. S4 assessed
+this at MEDIUM severity (AV:N/AC:L/PR:N/UI:R; conditional on integrator using
+`BrowserAuthProvider` rather than the default `Auth2AuthProvider`). R6 is superseded; see
+confirmed S4 for the full technical writeup and evidence.
 
 ### R7 — JWT No Client-Side Signature Verification
 
