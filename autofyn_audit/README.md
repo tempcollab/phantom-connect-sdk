@@ -3,17 +3,21 @@
 **Target:** Phantom Connect SDK monorepo  
 **Audit commit:** `872944c9f26f4eef21b1d4a9f795ffea627719b7`  
 **Docker image:** `node@sha256:8530f76a96d88820d288761f022e318970dda93d01536919fbc16076b7983e63`  
-**Scope:** First build — S1 + S2 only (strongest, most clearly live-confirmable findings)
+**Scope:** 8 live-confirmed findings (S1–S8). All confirmed against a live instance via `run_exploits.sh` (exit 0).
 
 ---
 
 ## Safety Note
 
 **No real network calls are made to cloud metadata endpoints (169.254.169.254) or
-real Phantom backend services.** All PoCs run offline against local listeners:
+real Phantom backend services.** All PoCs run offline against local loopback listeners:
 - S1 uses `127.0.0.1` as a safe stand-in; `169.254.169.254` is tested only at the
   *validator layer* (no network dial).
-- S2 runs entirely within a single Node.js process.
+- S2, S4, S5 run entirely within a single Node.js process (no network).
+- S3, S7 dial only loopback HTTP servers.
+- S6 drives real SDK code (`executeSwap`) with a stub client; no network, no keys.
+- S8 drives real `PerpsClient.ts` source with a stub signer and stub apiClient; no network, no keys.
+- No private keys, KMS calls, or real signing are performed by any PoC.
 
 ---
 
@@ -23,7 +27,7 @@ real Phantom backend services.** All PoCs run offline against local listeners:
 # 1. Setup (installs deps, verifies pinned commit and Docker image)
 bash autofyn_audit/setup.sh
 
-# 2. Run all PoCs
+# 2. Run all PoCs (S1–S8); exit 0 = all confirmed
 bash autofyn_audit/run_exploits.sh
 
 # 3. Cleanup
@@ -36,10 +40,18 @@ bash autofyn_audit/teardown.sh
 
 | ID | Title | Severity | Status |
 |----|-------|----------|--------|
-| S1 | Inconsistent Solana RPC SSRF | MEDIUM | See `exploits/s1-solana-rpc-ssrf/` |
-| S2 | Insecure Randomness (CWE-330/338) — OAuth State Weak CSRF-Token Entropy | LOW | See `exploits/s2-weak-oauth-state-prng/` |
+| S1 | Inconsistent Solana RPC SSRF (`resolveSolanaRpcUrl` skips private-IP block) | MEDIUM | Confirmed by PoC |
+| S2 | Insecure randomness (CWE-330/338) — OAuth state weak CSRF-token entropy | LOW | Confirmed by PoC |
+| S3 | Auto-402 payment handler blind-signs without the `pay_api_access` whitelist (asymmetry) | MEDIUM | Confirmed by PoC |
+| S4 | `BrowserAuthProvider.resumeAuthFromRedirect` conditional CSRF bypass (legacy non-default path) | MEDIUM | Confirmed by PoC |
+| S5 | `validateEip712TypedData` missing `primaryType`-in-`types` membership check | LOW | Confirmed by PoC |
+| S6 | MCP financial-action confirmation-gate asymmetry (`buy_token`/perps vs `transfer_tokens`/`send_solana_transaction`) | MEDIUM | Confirmed by PoC |
+| S7 | CVE-2026-40895: follow-redirects 1.15.11 custom-header leak in `@phantom/auth2` | MEDIUM | Confirmed by PoC |
+| S8 | Backend-controlled EIP-712 domain in `PerpsClient.withdrawFromSpot` `authorizeStep` — absent `verifyingContract` allowlist (CWE-345) | MEDIUM | Confirmed by PoC |
 
-See `audit_report.md` for full findings, rejected candidates, and follow-on work.
+No CRITICAL findings confirmed. Severities are deliberately conservative (accuracy > quantity).
+See `audit_report.md` for full per-finding writeups (attacker/trust boundary, reachable code
+path, live evidence excerpts), rejected false-positive candidates (R1–R8), and follow-on work.
 
 ---
 
@@ -48,8 +60,8 @@ See `audit_report.md` for full findings, rejected candidates, and follow-on work
 ```
 autofyn_audit/
   README.md                       this file
-  setup.sh                        install deps, verify pinned image/commit
-  run_exploits.sh                 run all PoCs, print CONFIRMED/NOT CONFIRMED
+  setup.sh                        install deps, verify pinned image/commit, build packages
+  run_exploits.sh                 run all PoCs (S1–S8), print CONFIRMED/NOT CONFIRMED
   teardown.sh                     clean up containers and temp files
   Dockerfile                      pinned node image + yarn build
   PINNED_COMMIT.txt               written by setup.sh (actual vs pinned commit)
@@ -57,13 +69,31 @@ autofyn_audit/
   lib/
     capture-server.mjs            HTTPS capture server (used by S1)
   exploits/
-    s1-solana-rpc-ssrf/
-      README.md                   repro steps, threat model, code path
-      run.mjs                     executable PoC (exit 0 = confirmed)
-    s2-weak-oauth-state-prng/
-      README.md                   repro steps, observability caveat, code path
-      run.mjs                     executable PoC (exit 0 = confirmed)
+    s1-solana-rpc-ssrf/           run.mjs + README (validator asymmetry + loopback dial)
+    s2-weak-oauth-state-prng/     run.mjs + README (no-CSPRNG path; record/replay)
+    s3-auto402-blind-signing/     run.mjs + payment-schema.mjs (reference contrast)
+    s4-browser-auth-csrf-bypass/  run.mjs (sessionStorage shim, no network)
+    s5-eip712-primarytype-gap/    run.mjs (membership-check gaps + negative control)
+    s6-mcp-confirmation-gate-asymmetry/  run.mjs + confirmation-gate-reference.mjs
+    s7-follow-redirects-header-leak/     run.mjs (two-port cross-domain leak)
+    s8-perps-eip712-blind-sign/          run.mjs (attacker verifyingContract reaches signer)
 ```
+
+Each `run.mjs` exits `0` = confirmed, `1` = not confirmed (patched/absent), `2` = harness error.
+
+---
+
+## Per-PoC Run Directories
+
+`run_exploits.sh` runs each PoC from the directory whose `node_modules` resolves its deps:
+
+| PoC | Run dir | Why |
+|-----|---------|-----|
+| S1, S2, S3, S6 | `packages/cli` | `@phantom/client`, `@solana/web3.js`, `incur`, `bs58` resolve here |
+| S4 | `packages/browser-sdk` | `@phantom/constants` scope |
+| S5 | `packages/parsers` | `ethers` + `@solana/transactions` live only here |
+| S7 | `packages/auth2` | vulnerable `follow-redirects@1.15.11` is in `auth2/node_modules` (CLI has patched 1.16.0) |
+| S8 | `packages/perps-client` | `@phantom/parsers`, `@phantom/client`, `@phantom/phantom-api-client` resolve from `perps-client/node_modules` |
 
 ---
 
@@ -71,6 +101,6 @@ autofyn_audit/
 
 - Node.js v24.x (host)
 - yarn 4.2.2 via corepack (`~/.local/bin/yarn`)
-- `npx tsx` (comes with Node.js 18+)
+- `tsx` (setup.sh ensures it is on PATH)
 - `openssl` in PATH (for S1 HTTPS capture server)
 - Docker (optional, for container-based reproduction)
