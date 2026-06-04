@@ -17,6 +17,8 @@ real Phantom backend services.** All PoCs run offline against local loopback lis
 - S3, S7 dial only loopback HTTP servers.
 - S6 drives real SDK code (`executeSwap`) with a stub client; no network, no keys.
 - S8 drives real `PerpsClient.ts` source with a stub signer and stub apiClient; no network, no keys.
+- C1 drives real `executeSwap` + `parseUiAmount` + `resolveSolanaRpcUrl` with a stub client and a
+  local loopback Solana JSON-RPC server; no real keys, no Phantom API calls.
 - No private keys, KMS calls, or real signing are performed by any PoC.
 
 ---
@@ -48,6 +50,11 @@ bash autofyn_audit/teardown.sh
 | S6 | MCP financial-action confirmation-gate asymmetry (`buy_token`/perps vs `transfer_tokens`/`send_solana_transaction`) | MEDIUM | Confirmed by PoC |
 | S7 | CVE-2026-40895: follow-redirects 1.15.11 custom-header leak in `@phantom/auth2` | MEDIUM | Confirmed by PoC |
 | S8 | Backend-controlled EIP-712 domain in `PerpsClient.withdrawFromSpot` `authorizeStep` — absent `verifyingContract` allowlist (CWE-345) | MEDIUM | Confirmed by PoC |
+| **CHAIN-A (C1)** | S1+S6: RPC-decimals amplified un-gated swap — silent magnitude distortion, M1 attacker only, no backend compromise | MEDIUM-HIGH | Confirmed by PoC |
+
+**Exploit chain CHAIN-A (C1) confirmed:** S1+S6 chain produces silent magnitude distortion of
+an intended swap under a single M1 (prompt-injected MCP) tool call — no backend compromise.
+See Exploit Chains section in `audit_report.md` for the chain analysis and CHAIN-B/CHAIN-C rejections.
 
 No CRITICAL findings confirmed. Severities are deliberately conservative (accuracy > quantity).
 See `audit_report.md` for full per-finding writeups (attacker/trust boundary, reachable code
@@ -77,6 +84,7 @@ autofyn_audit/
     s6-mcp-confirmation-gate-asymmetry/  run.mjs + confirmation-gate-reference.mjs
     s7-follow-redirects-header-leak/     run.mjs (two-port cross-domain leak)
     s8-perps-eip712-blind-sign/          run.mjs (attacker verifyingContract reaches signer)
+    c1-rpc-decimals-amplified-swap/      run.mjs + README (CHAIN-A: S1+S6 chain PoC)
 ```
 
 Each `run.mjs` exits `0` = confirmed, `1` = not confirmed (patched/absent), `2` = harness error.
@@ -94,6 +102,7 @@ Each `run.mjs` exits `0` = confirmed, `1` = not confirmed (patched/absent), `2` 
 | S5 | `packages/parsers` | `ethers` + `@solana/transactions` live only here |
 | S7 | `packages/auth2` | vulnerable `follow-redirects@1.15.11` is in `auth2/node_modules` (CLI has patched 1.16.0) |
 | S8 | `packages/perps-client` | `@phantom/parsers`, `@phantom/client`, `@phantom/phantom-api-client` resolve from `perps-client/node_modules` |
+| C1 | `packages/cli` | `@solana/web3.js`, `@solana/spl-token`, `bs58`, `@phantom/client` resolve here (same as S1/S6) |
 
 ---
 

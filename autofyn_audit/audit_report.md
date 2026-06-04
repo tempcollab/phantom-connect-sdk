@@ -26,6 +26,7 @@
 | **S6** | MCP financial-action confirmation-gate asymmetry (`buy_token`/perps vs `transfer_tokens`/`send_solana_transaction`) | **Confirmed by PoC** | MEDIUM |
 | **S7** | CVE-2026-40895: follow-redirects 1.15.11 custom-header leak in `@phantom/auth2` | **Confirmed by PoC** | MEDIUM |
 | **S8** | Backend-controlled EIP-712 domain in `PerpsClient.withdrawFromSpot` `authorizeStep` — blind signing, absent `verifyingContract` allowlist (CWE-345) | **Confirmed by PoC** | MEDIUM |
+| **CHAIN-A (C1)** | S1⟶S6 RPC-decimals amplified un-gated swap — silent magnitude distortion of an intended swap, no backend compromise, single M1 tool call | **Confirmed by PoC** (Stages 1/2/4 live real-code; Stage 3 live or argued — see Exploit Chains section) | MEDIUM-HIGH |
 | F1 | `randomUUID()` silent fallback + `randomString()` unconditional `Math.random` | Follow-on | LOW |
 | F2 | 402 `preparedTx` blind-signing path | Superseded — see confirmed S3 (asymmetry framing) | MEDIUM |
 | R1 | Developer-config `apiBaseUrl`/`authApiBaseUrl` SSRF | **Rejected** | — |
@@ -1185,3 +1186,107 @@ is not a security requirement in this architecture.
 - Explorer-URL encoding and EVM error disclosure are defense-in-depth items.
 
 None of these constitute independently exploitable findings at the time of audit.
+
+---
+
+## Exploit Chains
+
+This section documents end-to-end exploit chains composed from the independently-confirmed
+S1–S8 findings. Chains escalate demonstrated impact above the sum of isolated parts; each
+chain must stay within a single attacker model and be live-confirmable.
+
+One chain holds (CHAIN-A). Two candidate chains were evaluated and rejected (CHAIN-B, CHAIN-C)
+— those rejections are documented below as a credibility asset; accurate rejection demonstrates
+that we declined chains that do not hold in source, rather than overstating.
+
+---
+
+### CHAIN-A (C1) — S1⟶S6: RPC-Decimals Amplified Un-Gated Swap
+
+**Verdict: HOLDS**  
+**Severity: MEDIUM-HIGH**  
+**Attacker model: M1** — prompt-injected / authorized MCP tool caller. **No backend compromise. No TLS MitM.** This is the chain's headline: two MEDIUM M1 findings compose into a single-call silent magnitude distortion under the most-reachable attacker model.
+
+#### Chain summary
+
+A single prompt-injected `buy_token` tool call (`amountUnit:"ui"`, `execute:true`, attacker-controlled `rpcUrl`) chains:
+
+1. **S1 (Solana rpcUrl un-IP-checked):** `resolveSolanaRpcUrl` accepts the attacker RPC URL without any private-IP/loopback block (`rpc.ts:82-97`, `validateHttpsUrl` checks scheme+hostname only). The EVM path (`validateRpcUrl`) blocks the same URL.
+2. **S6 (missing confirmation gate):** `buy_token execute:true` → `executeSwap` → `signAndSendTransaction` in a single call with no `runSimulation`, no `pending_confirmation`, no user-visible magnitude preview (`buy-token.ts:302-314` → `swap.ts:335-341`).
+3. **Chain hinge (decimals):** The attacker RPC is consulted for exactly one scalar — `getMint` decimals — at `buy-token.ts:220-223`/`236-239`. The attacker RPC returns a crafted SPL-mint account with `decimals=<attacker-chosen>`. That value flows to `parseUiAmount(amount, decimals!)` at `:247`, then to `sellAmount` in the Phantom quote request (`:283-284`), then to the un-gated `executeSwap`.
+
+**Why this is a genuine chain (not a restatement):** S1 alone was rated MEDIUM for SSRF/metadata-read impact — it controls _where_ the SDK dials. S6 alone was MEDIUM for missing gate — the amount broadcast is the one the user intended. Composed, S1's RPC control becomes a **silent amount-amplification oracle** feeding S6's no-preview auto-execution: an intended "sell 1.0 token" becomes "sell `10^(attackerDecimals)` base units" broadcast in one call.
+
+#### Stages and live vs argued status
+
+| Stage | Description | Status |
+|-------|-------------|--------|
+| 1 | `validateRpcUrl(attackerUrl)` throws; `resolveSolanaRpcUrl` returns attacker URL (S1 asymmetry) | **LIVE** (real `rpc.ts`) |
+| 2 | real `executeSwap` → stub `signAndSendTransaction` exactly once, no sim/confirm gate | **LIVE** (real `swap.ts`, same mechanic as S6) |
+| 3 | Attacker loopback RPC controls `getMint` decimals via crafted SPL MintLayout | **LIVE** if `getMint` (spl-token 0.4.x) parses the 82-byte crafted account; **ARGUED** from `buy-token.ts:220-247` + `MintLayout` semantics if not |
+| 4 | real `parseUiAmount("1.0", attackerDecimals)` returns `10^30` vs honest `10^6` (24-order inflation) | **LIVE** (real `amount.ts`) |
+
+**CONFIRMED verdict rests on Stages 1 + 2 + 4 (all live real-code).** Stage 3 is live if `getMint` parses the crafted account; argued otherwise — never faked.
+
+#### Honest impact ceiling
+
+The novel property is **silent magnitude distortion of an intended swap**:
+- Bounded by the user's token balance — not a full drain to an arbitrary address.
+- Routed through the real Phantom quote API — the SDK requests an inflated `sellAmount`, which Phantom must price and the user must have the balance to cover.
+- An absurd inflation (e.g. `decimals=30`, `sellAmount=10^30`) exceeds any real balance; the quote API or on-chain execution rejects/fails. A realistic attacker tunes `decimals` to inflate within the victim's balance.
+- **NOT** arbitrary-recipient theft. **NOT** key exfil. **NOT** an unconditional drain.
+
+**Argued (not live-drained):** the PoC uses a stub client with no real keys and does not contact the live Phantom quote API. The _mechanism_ (silent amplification feeding an un-gated broadcast) is proven live; an actual larger on-chain spend requires a live environment.
+
+#### Preconditions
+
+1. M1 prompt-injected / authorized MCP tool caller (no backend compromise, no TLS MitM).
+2. Victim invokes `buy_token` with `amountUnit:"ui"` on a Solana SPL token (not a native-token or EVM path — those take a different `decimals` code branch not routed through `getMint`).
+3. `execute:true` (attacker supplies it in the tool call, or the LLM agent does).
+4. Attacker controls the `rpcUrl` MCP parameter.
+
+#### PoC
+
+`autofyn_audit/exploits/c1-rpc-decimals-amplified-swap/run.mjs`  
+Run dir: `packages/cli` (same as S1, S6)
+
+---
+
+### CHAIN-B — S7 (stamp leak) ⊕ S8 (blind EIP-712) — VERDICT: COLLAPSES (do NOT build)
+
+**Hypothesis:** the leaked `x-phantom-stamp` from S7 lets the attacker replay/authorize the
+`withdrawFromSpot` the S8 blind-sign produces, combining exfil + blind-sign into off-platform
+fund redemption.
+
+**Source evidence it does not hold:**
+- The leaked stamp is a **per-request body signature** bound to one exact request body
+  (`Auth2KmsRpcClient.ts:53-56`: `stamp = await stamper.stamp({ data: Buffer.from(requestBody) })`).
+  It authorizes only the single KMS-RPC call that triggered the redirect; it cannot be
+  re-pointed at a new "withdraw" request.
+- The `authorization` header (the reusable bearer) is the one credential S7 **proved is
+  correctly stripped** cross-domain (S7 evidence block, assertion (f)). The leak does not
+  hand the attacker a replayable session.
+- **Different channels:** S7's stamp is over an `auth2` KMS-RPC body; S8's signature is
+  produced by `perps-client` over a `bridge-initialize` EIP-712 struct. The leaked stamp
+  does not authorize the S8 withdrawal.
+- **Replay is non-live-confirmable.** Whether even the captured method could be replayed
+  depends on the opaque KMS backend's timestamp/nonce/replay-protection (`timestampMs: Date.now()`
+  is sent, suggesting server-side freshness checks). Per the ironclad Rule, an unconfirmable
+  critical step must not be presented as confirmed.
+
+**Verdict: REJECT.** The link (stamp authorizes the withdrawal) does not exist in source.
+The chain is S7 and S8 standing side-by-side under the same M2 precondition, not composed.
+
+---
+
+### CHAIN-C — S2 (weak PRNG) ⊕ S4 (CSRF-resume) — VERDICT: COLLAPSES (do NOT build)
+
+**Hypothesis:** predict the OAuth `state` via S2 weak PRNG, then use S4 to accept attacker
+identity via the CSRF-resume bypass → browser session takeover.
+
+**Source evidence it does not hold:**
+- **S4 needs no prediction.** `auth.ts:148` guard `if (context.sessionId && sessionId !== context.sessionId)` is _skipped entirely_ when `sessionStorage` is empty (`context={}`, `context.sessionId` undefined). The attacker supplies any `session_id` URL param and it is accepted — there is nothing to predict. S2 contributes nothing.
+- **Different surfaces/providers.** S2's `generateSessionId` lives in `embedded-provider-core` and feeds the _Auth2/embedded_ OAuth `state` whose check is **unconditional and sound** (per round-2 accumulated role rule). S4's bypass is in the _legacy, non-default_ `BrowserAuthProvider` (browser-sdk). They do not feed each other.
+- **S2's prediction half was never live-confirmed.** The report explicitly disclaims recovering xorshift128+ state from the truncated base-36 IDs an outside observer can see. Chaining onto a non-confirmed primitive yields a non-confirmed chain.
+
+**Verdict: REJECT.** The link is incoherent (S4 requires no predicted value; S2 only matters on the sound provider where there is no bypass), and the prediction step is non-live-confirmable.
