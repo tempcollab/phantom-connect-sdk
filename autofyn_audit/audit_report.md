@@ -21,6 +21,8 @@
 | **S3** | Auto-402 payment handler signs without the whitelist `pay_api_access` enforces — blind-signing asymmetry | **Confirmed by PoC** (live: real auto-handler blind-signs unvalidated drain tx; whitelist asymmetry shown by source-citation + labeled reference reproduction) | MEDIUM |
 | **S4** | `BrowserAuthProvider.resumeAuthFromRedirect` conditional CSRF bypass (legacy non-default class) | **Confirmed by PoC** | MEDIUM |
 | **S5** | `validateEip712TypedData` missing `primaryType`-in-`types` membership check | **Confirmed by PoC** | LOW |
+| **S6** | MCP financial-action confirmation-gate asymmetry (`buy_token`/perps vs `transfer_tokens`/`send_solana_transaction`) | **Confirmed by PoC** | MEDIUM |
+| **S7** | CVE-2026-40895: follow-redirects 1.15.11 custom-header leak in `@phantom/auth2` | **Confirmed by PoC** | MEDIUM |
 | F1 | `randomUUID()` silent fallback + `randomString()` unconditional `Math.random` | Follow-on | LOW |
 | F2 | 402 `preparedTx` blind-signing path | Superseded — see confirmed S3 (asymmetry framing) | MEDIUM |
 | R1 | Developer-config `apiBaseUrl`/`authApiBaseUrl` SSRF | **Rejected** | — |
@@ -610,6 +612,217 @@ if (!("EIP712Domain" in (obj.types as object))) {
 }
 // Optionally: validate each types[k] is an array of {name:string, type:string}
 ```
+
+---
+
+### S6 — MCP Financial-Action Confirmation-Gate Asymmetry
+
+**Severity:** MEDIUM  
+**Provisional CVSS:** AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:N (~6.x)  
+*(PR:L because the attacker is an AUTHORIZED MCP tool caller — a session-authenticated LLM/agent
+or a prompt-injected payload. This is NOT arbitrary fund theft by an unauthenticated party.
+Impact is economic — forced swap into an attacker-chosen token, or a leveraged position —
+bounded by the user's balance. NOT CRITICAL.)*  
+**CWE:** CWE-862 (Missing Authorization / missing confirmation step) — inconsistent
+transaction-confirmation control.
+
+**Affected files:**
+| File | Lines | Role |
+|------|-------|------|
+| `packages/cli/src/actions/buy-token.ts` | 96-103, 295-314 | `execute` field, no gate |
+| `packages/cli/src/utils/swap.ts` | 206-404 | `executeSwap` — signs in one shot |
+| `packages/cli/src/actions/open-perp-position.ts` | 13-90 | no `confirmed`/`dryRun`/gate |
+| `packages/cli/src/actions/close-perp-position.ts` | 13-54 | no `confirmed`/`dryRun`/gate |
+| `packages/cli/src/actions/cancel-perp-order.ts` | 13-53 | no `confirmed`/`dryRun`/gate |
+
+**Contrast (tools WITH gate):**
+| File | Lines | Gate |
+|------|-------|------|
+| `packages/cli/src/actions/transfer-tokens.ts` | 81-87, 359-373 | `confirmed` + `runSimulation(` + `pending_confirmation` |
+| `packages/cli/src/actions/send-solana-transaction.ts` | 32-37, 89-111 | `confirmed` + `runSimulation(` + `pending_confirmation` |
+
+#### Attacker and Trust Boundary
+
+The attacker is a **prompt-injected / untrusted MCP tool caller** — a legitimate session using
+the `buy_token` or perps MCP tools, where the LLM has been influenced by injected instructions.
+This is the SAME attacker class as S5 (legitimate tool caller) and is a **MORE-REACHABLE class
+than S3** (which requires backend/MitM control). The swap route comes from Phantom's quote API —
+the attacker does NOT control the route; the impact is forcing a swap into a real but
+attacker-chosen worthless/illiquid token, or opening a leveraged position at an inopportune
+time. This is NOT arbitrary-recipient fund theft. The finding is the **gate asymmetry** itself.
+
+#### Technical Description
+
+`transfer_tokens` and `send_solana_transaction` enforce a mandatory two-step flow: the first
+call runs `runSimulation()` and returns `{ status: "pending_confirmation" }` without signing;
+only a second call with `confirmed: true` reaches `signAndSendTransaction`
+(`send-solana-transaction.ts:89-111`, `transfer-tokens.ts:359-373`).
+
+`buy_token execute:true` and the perps tools (`open_perp_position`, `close_perp_position`,
+`cancel_perp_order`) have **no such gate**: a single tool call signs and broadcasts immediately
+with no simulation/preview step. `buy_token execute:true` invokes `executeSwap`
+(`swap.ts:206-404`); the Solana same-chain branch (`swap.ts:320-341`) calls
+`client.signAndSendTransaction` exactly once with no `runSimulation` and no
+`pending_confirmation` return. The perps actions call `perps.openPosition/closePosition/cancelOrder`
+directly.
+
+#### Confirmation / Evidence
+
+Verbatim stdout from the S6 PoC (live run, 2026-06-04, `bash autofyn_audit/run_exploits.sh`):
+
+```
+── PART A: REAL executeSwap — same-chain Solana path, stub client ────────────
+  [LIVE] executeSwap imported from: /home/agentuser/repo/packages/cli/src/utils/swap.ts
+
+  [LIVE] executeSwap completed. signCalls recorded: 1
+  [LIVE] signAndSendTransaction call args:
+    walletId:     poc-wallet-id
+    networkId:    solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp
+    account:      11111111111111111111111111111111
+    transaction:  RFVNTVlfU09MQU5BX1RYX0JZVEVTX1BPQw...
+
+  (A1) [LIVE] signAndSendTransaction called exactly once: PASS (calls=1)
+  (A2) [LIVE] No simulation call / pending_confirmation return: PASS (no simulation interceptor exists; stub client has no apiClient)
+
+  ✓ PART A CONFIRMED: real executeSwap (buy_token execute:true path) reached
+    signAndSendTransaction in a SINGLE call with ZERO simulation/confirmation step.
+
+── PART C: Source-text asymmetry scan (real .ts files) ─────────────────────
+  Files with gate PRESENT (transfer/send):
+    transfer-tokens.ts:           runSimulation( YES ✓ | pending_confirmation YES ✓ → Gate scan PASS
+    send-solana-transaction.ts:   runSimulation( YES ✓ | pending_confirmation YES ✓ → Gate scan PASS
+
+  Files with gate ABSENT (buy/perps):
+    buy-token.ts:            runSimulation( NO ✓ | pending_confirmation NO ✓ → Absent scan PASS
+    open-perp-position.ts:   runSimulation( NO ✓ | pending_confirmation NO ✓ → Absent scan PASS
+    close-perp-position.ts:  runSimulation( NO ✓ | pending_confirmation NO ✓ → Absent scan PASS
+    cancel-perp-order.ts:    runSimulation( NO ✓ | pending_confirmation NO ✓ → Absent scan PASS
+
+  ✓ PART C CONFIRMED: source-text asymmetry verified.
+
+=== S6: MCP financial-action confirmation-gate ASYMMETRY ===
+  PART A [LIVE REAL CODE]:
+    (A1) real executeSwap → signAndSendTransaction exactly once, no sim:  CONFIRMED
+  PART C [source-text scan — real .ts files]:
+    Gate present in transfer-tokens.ts + send-solana-transaction.ts:      CONFIRMED
+    Gate absent in buy-token.ts + open/close/cancel-perp-position.ts:     CONFIRMED
+  Overall: PART A + PART C: CONFIRMED
+
+>>> S6: MCP confirmation-gate asymmetry (buy_token/perps vs transfer/send): CONFIRMED <<<
+```
+
+PART B (reference contrast, illustrative only — does NOT affect the verdict) additionally
+showed the gated `send_solana_transaction` path returning `pending_confirmation` with `0`
+signer calls on `confirmed:false`, and `1` signer call on `confirmed:true`. CONFIRMED rests
+SOLELY on PART A (real `executeSwap`) + PART C (source scan). The real action modules cannot
+be imported under tsx (they import `incur` → `@modelcontextprotocol/server`, no CJS exports),
+so PART B uses a verbatim reference reproduction of the gate branch.
+
+#### Real-World Impact
+
+A prompt-injected LLM agent with access to the `buy_token` or perps MCP tools can force a
+swap (e.g., selling the user's SOL for an illiquid or worthless token) or open a leveraged
+perpetual position with no user-visible simulation step and no opportunity for the user to
+review and reject. Impact is bounded by the user's current balance and collateral.
+
+#### PoC Reference
+
+`autofyn_audit/exploits/s6-mcp-confirmation-gate-asymmetry/run.mjs`  
+Run: `cd packages/cli && npx tsx /path/to/autofyn_audit/exploits/s6-mcp-confirmation-gate-asymmetry/run.mjs`
+
+#### Remediation
+
+1. **Primary:** Add a `confirmed`/`dryRun` gate to `buy_token execute:true`: run `runSimulation()`
+   and return `{ status: "pending_confirmation" }` when `confirmed !== true`, matching the
+   pattern in `transfer_tokens` / `send_solana_transaction`.
+2. **Perps tools:** Add a `confirmed` parameter to `open_perp_position`, `close_perp_position`,
+   and `cancel_perp_order`. On first call return a position preview (size, leverage, estimated
+   liquidation price, margin required); require `confirmed: true` to submit.
+3. **Policy:** Establish a consistent tool-authoring policy: all write tools that sign or
+   submit transactions must include the two-step simulation/confirmation flow before reaching
+   `signAndSendTransaction`.
+
+---
+
+### S7 — CVE-2026-40895: follow-redirects 1.15.11 Custom-Header Leak in @phantom/auth2
+
+**Severity:** MEDIUM  
+**Provisional CVSS:** AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N (~5.x–6.x)  
+*(AC:H: requires the KMS/wallets backend at the TLS-protected base URL to return a
+cross-domain 3xx redirect, or a TLS MitM. Same class as S3. NOT CRITICAL.)*  
+**CWE:** CWE-201 (Sensitive Information in Sent Data)  
+**CVE:** CVE-2026-40895
+
+**Affected package:** `packages/auth2/node_modules/follow-redirects@1.15.11` (VULNERABLE)  
+**Affected file (headers):** `packages/auth2/src/Auth2KmsRpcClient.ts:38-62`  
+**Vulnerable strip logic:** `packages/auth2/node_modules/follow-redirects/index.js:471-476`  
+**Contrast (patched):** `packages/cli/node_modules/follow-redirects@1.16.0`
+
+#### Attacker and Trust Boundary
+
+SAME class as S3 — requires the KMS/wallets backend at the TLS-protected base URL to return a
+cross-domain 302/301/307 redirect, or a TLS MitM between the CLI and the KMS. NOT
+attacker-reachable in a normal deployment without backend control or TLS interception. The NEW
+angle vs S3 is credential exfiltration (secret theft — explicitly in audit scope) via a stale
+transitive dependency in a DISTINCT package (`@phantom/auth2`), with a named CVE. It shares no
+PoC code with S3. Independent finding.
+
+#### Technical Description
+
+`@phantom/auth2` uses axios (→ follow-redirects via the Node http adapter) to call the KMS API.
+The `auth2` package's own `node_modules` tree pins `follow-redirects@1.15.11`, vulnerable to
+CVE-2026-40895: on a cross-domain 3xx redirect the library strips only `authorization`,
+`proxy-authorization`, and `cookie` (`index.js:471-476`) — it does NOT strip custom headers.
+The signing credential `x-phantom-stamp` and OIDC subject identifier `x-auth-user-id` that
+`Auth2KmsRpcClient` adds to every request (`Auth2KmsRpcClient.ts:44-56`) are forwarded verbatim
+to the redirect destination. The `packages/cli` tree uses the patched `1.16.0` (strips additional
+headers) — the stale dep in auth2 is the defect.
+
+Two loopback ports constitute "cross-domain": `redirectUrl.host`/`currentHost` include the port
+(WHATWG `.host`), so `127.0.0.1:<portA>` vs `127.0.0.1:<portB>` differ and `isSubdomain()` is
+false — the cross-domain strip branch fires even over plain loopback HTTP, making a deterministic
+two-port PoC valid.
+
+#### Confirmation / Evidence
+
+Verbatim stdout from the S7 PoC (live run, 2026-06-04, `bash autofyn_audit/run_exploits.sh`):
+
+```
+  Loaded version:    follow-redirects@1.15.11 [CONFIRMED vulnerable]
+  (a) [LIVE] Vulnerable 1.15.11 loaded from auth2/node_modules: CONFIRMED
+  (b) [LIVE] Redirect server issued 302 cross-domain (portA→portB):  CONFIRMED
+  (c) [LIVE] follow-redirects followed the 302 with headers:          CONFIRMED
+  (d) [LIVE] x-phantom-stamp leaked to cross-domain target:            CONFIRMED
+  (e) [LIVE] x-auth-user-id leaked to cross-domain target:             CONFIRMED
+  (f) [LIVE] authorization correctly stripped (selective strip proven): CONFIRMED
+  Overall:                                                              CONFIRMED
+
+>>> S7: follow-redirects 1.15.11 custom-auth-header leak (CVE-2026-40895): CONFIRMED <<<
+```
+
+A version guard exits 1 (NOT CONFIRMED) if the loaded `follow-redirects` is not 1.15.11, so
+CONFIRMED rests on the real vulnerable library. `authorization` being correctly stripped while
+`x-phantom-stamp`/`x-auth-user-id` leak proves the SELECTIVE strip (not a total no-op).
+
+#### Real-World Impact
+
+If the KMS/wallets backend (or a TLS MitM) issues a cross-domain redirect, the user's signing
+credential (`x-phantom-stamp`) and OIDC subject (`x-auth-user-id`) are exfiltrated to the
+redirect destination, enabling credential theft / request replay against the wallets API.
+
+#### PoC Reference
+
+`autofyn_audit/exploits/s7-follow-redirects-header-leak/run.mjs`  
+Run: `cd packages/auth2 && npx tsx /path/to/autofyn_audit/exploits/s7-follow-redirects-header-leak/run.mjs`
+
+#### Remediation
+
+1. **Primary:** Bump `follow-redirects` to `>=1.16.0` in `@phantom/auth2`'s dependency tree
+   (add a workspace `resolutions` entry if hoisting keeps a stale copy in auth2's node_modules).
+2. **Defense-in-depth:** Declare custom secret headers in axios's `sensitiveHeaders` config
+   (axios ≥1.4.0) so they are stripped before any redirect.
+3. **Audit:** Review all other packages' transitive `follow-redirects` versions for the same
+   stale-dep pattern.
 
 ---
 
