@@ -14,6 +14,8 @@
 
 ## Verdict Summary
 
+**Bottom line:** 8 independent findings are live-confirmed against the real SDK code (S1–S8). **None reach CRITICAL.** Two are LOW (S2, S5) and six are MEDIUM (S1, S3, S4, S6, S7, S8). Several MEDIUMs (S3, S7, S8) require a malicious/compromised backend or TLS MitM as a precondition — they are reported because each grants a *distinct* capability in a *distinct* package/CWE, and that precondition is stated plainly in each finding rather than glossed over. The browser private-key handling path is hardened (non-extractable WebCrypto keys, origin-isolated IndexedDB), and the server/parser/RPC-validation surfaces are largely sound; we did **not** find RCE, command injection, SQLi, path traversal, or unconditional fund/key exfiltration. Severity is deliberately not inflated.
+
 | ID | Title | Status | Severity |
 |----|-------|--------|----------|
 | **S1** | Inconsistent Solana RPC SSRF — `resolveSolanaRpcUrl` skips private-IP block | **Confirmed by PoC** | MEDIUM |
