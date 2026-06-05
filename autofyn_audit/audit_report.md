@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|-------|
 | **Target** | Phantom Connect SDK monorepo (`@phantom/sdk-monorepo`) |
-| **Audit commit** | `872944c9f26f4eef21b1d4a9f795ffea627719b7` |
+| **Audit commit** | `33efbe59a34a0de25d1bd38f3e91758a802a3f5f` |
 | **Docker base image** | `node@sha256:8530f76a96d88820d288761f022e318970dda93d01536919fbc16076b7983e63` (node:24-bookworm) |
 | **Node runtime** | v24.16.0, yarn@4.2.2 |
 | **Date** | 2026-06-04 |
@@ -388,6 +388,17 @@ An attacker who controls the contents of a 402 HTTP response returned by the ser
 connection to `api.phantom.app`, a compromised/substituted backend, or a developer who
 points `PHANTOM_API_BASE_URL` at a hostile server. **NOT attacker-reachable via MCP tool
 params alone — requires backend/TLS control. NOT critical.**
+
+**Reachability sharpening (S3):** The auto-402 handler is installed on a **shared `apiClient`
+singleton** at module load (`packages/cli/src/index.ts:44-72`); this same `apiClient` is passed
+into `createPerpsClient` (`packages/cli/src/utils/perps.ts:40-51`) and routes every request
+through `PhantomApiClient.get`/`post` (`packages/phantom-api-client/src/PhantomApiClient.ts:85-112`),
+which raises a `PaymentRequiredError` on any 402 from any endpoint. Consequently the blind
+Solana sign+broadcast is reachable during **any** tool that issues a backend request — including
+perps tools (`open_perp_position`, `close_perp_position`), price queries (`get_token_price`), and
+address lookups (`get_wallet_addresses`) — not only during an explicit `pay_api_access` call.
+This does not change the trust boundary (backend compromise / TLS MitM remains the precondition)
+or the severity (MEDIUM), but broadens the surface across which S3 can be triggered.
 
 #### Technical Description
 
@@ -777,7 +788,7 @@ Verbatim stdout from the S6 PoC (live run, 2026-06-04, `bash autofyn_audit/run_e
 
 ```
 ── PART A: REAL executeSwap — same-chain Solana path, stub client ────────────
-  [LIVE] executeSwap imported from: /home/agentuser/repo/packages/cli/src/utils/swap.ts
+  [LIVE] executeSwap imported from: <REPO_ROOT>/packages/cli/src/utils/swap.ts
 
   [LIVE] executeSwap completed. signCalls recorded: 1
   [LIVE] signAndSendTransaction call args:
@@ -1015,7 +1026,7 @@ Verbatim stdout from the S8 PoC (live run, 2026-06-04, `bash autofyn_audit/run_e
 
 ```
 ── Step 1: Imported REAL PerpsClient.ts source ──────────────────────────────────────
-  [OK] PerpsClient loaded from source: /home/agentuser/repo/packages/perps-client/src/PerpsClient.ts
+  [OK] PerpsClient loaded from source: <REPO_ROOT>/packages/perps-client/src/PerpsClient.ts
 
 ── Step 2: Malicious quote built ────────────────────────────────────────────────────
   authorizeStep.domain.verifyingContract: 0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
@@ -1195,7 +1206,7 @@ This section documents end-to-end exploit chains composed from the independently
 S1–S8 findings. Chains escalate demonstrated impact above the sum of isolated parts; each
 chain must stay within a single attacker model and be live-confirmable.
 
-One chain holds (CHAIN-A). Four candidate chains were evaluated and rejected (CHAIN-B, CHAIN-C, CHAIN-D, CHAIN-E)
+One chain holds (CHAIN-A). Seven candidate chains were evaluated and rejected (CHAIN-B, CHAIN-C, CHAIN-D, CHAIN-E, CHAIN-F, CHAIN-G, CHAIN-H)
 — those rejections are documented below as a credibility asset; accurate rejection demonstrates
 that we declined chains that do not hold in source, rather than overstating.
 
@@ -1321,3 +1332,124 @@ identity via the CSRF-resume bypass → browser session takeover.
 - **The "attacker-chosen `verifyingContract`" capability is already S8.** The standalone observation that a legitimate `sign_evm_typed_data` caller can sign any EIP-712 struct they construct is the isolated S5/tool behavior; it does not require combining two findings and does not escalate above S5's existing LOW severity. The off-platform-redeemable EIP-712 signature under the backend-compromise model is already captured by S8 (PerpsClient `authorizeStep`, `PerpsClient.ts:356-361`) — a distinct finding in a distinct package under a distinct attacker model (M2, not M1).
 
 **Verdict: REJECT.** S5's missing membership check induces no display-vs-signed divergence because there is no display or re-derivation step to confuse. The MCP caller is the sole author of all typedData fields and the KMS signs exactly what was supplied. This is the isolated S5 behavior, not an escalation produced by combining findings.
+
+---
+
+### CHAIN-F — S3 (auto-402 blind Solana sign) ⊕ S8 (perps blind EIP-712) — VERDICT: COLLAPSES (do NOT build)
+
+**Attacker model: M2** — compromised/malicious backend or TLS MitM of `api.phantom.app`.
+
+**Hypothesis:** Because the perps tools share the same `apiClient` singleton that carries the
+auto-402 payment handler, a single malicious-backend interaction with `withdrawFromSpot` could
+BOTH (a) blind-sign a Hyperliquid/Relay EIP-712 struct (S8) AND (b) return a 402 to blind-sign
+and broadcast an arbitrary Solana drain (S3) — composing an EVM blind-sign with a Solana drain
+into one escalated attack.
+
+**The shared-singleton fact (true, worth stating, but not a chain):**
+- The CLI installs the auto-402 handler once on the module-load singleton `apiClient`
+  (`packages/cli/src/index.ts:44-46` constructs it; `:50-72` `setPaymentHandler` decodes
+  `payment.preparedTx` base64 and `signAndSendTransaction`-broadcasts it with zero validation — S3).
+- `createPerpsClient` passes that very `context.apiClient` into `PerpsClient`
+  (`packages/cli/src/utils/perps.ts:40-51`, `apiClient: context.apiClient`), and `PerpsApi`
+  routes every perps call through it (`packages/perps-client/src/api.ts:46-52,182-207`).
+- `PhantomApiClient.get`/`post` invoke `_pay` on any 402 from any endpoint, including the perps
+  `getBridgeInitialize` GET and the `postAuthorize`/`postSpotSend` POSTs
+  (`PhantomApiClient.ts:85-112,149-154`; the 402 is raised from `handleResponse` at `:186-203`
+  on every request). So during a perps tool call the backend CAN trigger the blind Solana sign.
+
+**Decisive rejection reason (no new precondition crosses):** Under M2 the backend can already
+trigger S3 on its own with no perps call involved — any tool that makes any backend request
+(e.g. `get_token_price`, `get_wallet_addresses`) gives the backend a 402 opportunity, and S3
+then blind-signs whatever `preparedTx` the backend authored. Likewise the backend can already
+trigger S8 on its own by returning a crafted `bridge-initialize` quote. Composing them yields
+"the backend obtains a Solana drain AND an EVM blind-sign" — two capabilities it already holds
+separately, exercised in the same session. There is **no data dependency** between them: S3's
+signed bytes come entirely from `err.payment.preparedTx` (`index.ts:60`,
+`PhantomApiClient.ts:151`), which is backend-authored and does not consume any output of S8's
+EIP-712 signature; S8's signed struct comes entirely from `quote.authorizeStep`
+(`PerpsClient.ts:352-361`), which does not consume any output of S3. Neither finding's output
+becomes the other's precondition. This is two M2 findings standing side-by-side, exactly the
+failure mode the chain rule forbids (cf. CHAIN-B). **REJECT.**
+
+---
+
+### CHAIN-G — S7 (header leak) ⊕ S3/S8 (blind-sign) — VERDICT: COLLAPSES (do NOT build)
+
+**Attacker model: M2** — compromised/malicious backend or TLS MitM of `api.phantom.app` (S3/S8
+model); third-party cross-domain redirect target (S7 model). These are distinct attacker positions.
+
+**Hypothesis:** S7 leaks `x-phantom-stamp` + `x-auth-user-id` on a cross-domain redirect
+(`packages/auth2/node_modules/follow-redirects@1.15.11`, strip regex `index.js:471-476` drops
+only `authorization`/`proxy-authorization`/`cookie`; `Auth2KmsRpcClient.ts:44-56` sets the
+leaking headers). The leaked credential then authorizes or replays the blind-signed withdrawal of
+S8 (or the S3 payment), composing credential exfil + blind-sign into off-platform fund redemption.
+
+**Decisive rejection reasons (two independent, either is fatal):**
+
+1. **The leaked stamp is a per-request body signature, not a reusable bearer — same as CHAIN-B.**
+   `x-phantom-stamp` is computed over the exact serialized request body of the single KMS-RPC call
+   that triggered the redirect: `stamp = await this.stamper.stamp({ data: Buffer.from(requestBody) })`
+   where `requestBody = JSON.stringify(config.data)` (`Auth2KmsRpcClient.ts:53-56`). It cannot be
+   re-pointed at a new "authorize withdrawal" or "pay" request — it authorizes only the one body it
+   was computed over. The reusable `authorization` bearer (`:47`) is the one credential S7 proved is
+   correctly stripped cross-domain (S7 evidence block, assertion (f)). So S7's leak hands the
+   attacker no replayable authorization for the S8/S3 signing path. (Replay viability would further
+   depend on the opaque KMS timestamp/nonce check — `timestampMs: Date.now()`, `Auth2KmsRpcClient.ts:81,
+   92,102,116` — which is non-live-confirmable per the ironclad rule.) This is CHAIN-B verbatim and
+   already rejected in the report above.
+
+2. **Under M2 the backend already receives every header — S7 adds nothing to the M2 attacker.**
+   S7's novelty is that the credential leaks to a third-party cross-domain redirect target. But the
+   M2 attacker (compromised backend / TLS MitM of `api.phantom.app`) already receives
+   `x-phantom-stamp`, `x-auth-user-id`, and `authorization` directly on every request — they are sent
+   to `api.phantom.app` by design. S7 only matters if the redirect-target third party is the attacker,
+   which is a different and weaker attacker model than M2. Mixing S7 (third-party-exfil model) with
+   S3/S8 (controls-the-backend model) is not a single-attacker-model chain. Channels also differ:
+   S7's stamp is over an `auth2` KMS-RPC body (`Auth2KmsRpcClient.ts:62-66`); S8's signature is
+   produced by `perps-client` over a `bridge-initialize`-derived struct (`PerpsClient.ts:356-385`);
+   S3's payment is on the `phantom-api-client` 402 channel. The leaked stamp does not authorize
+   either signing endpoint.
+
+**Verdict: REJECT.** The link (leaked stamp authorizes the blind-signed withdrawal/payment) does
+not exist in source, and under M2 the credential is already in the attacker's hands, so it grants
+no new precondition. This is CHAIN-B re-derived for the M2 unit-of-analysis; no new PoC is needed.
+
+---
+
+### CHAIN-H — S3 (Solana broadcast) ↔ S8 (EVM signature) — no value-flow between them — VERDICT: COLLAPSES (do NOT build)
+
+**Attacker model: M2** — compromised/malicious backend or TLS MitM of `api.phantom.app`.
+
+**Hypothesis (last remaining shape):** even without S7, perhaps S8's signature output or S3's
+broadcast output feeds the other — e.g. S3's broadcast `result.hash` or `setPaymentSignature(sig)`
+becoming a precondition that unlocks the S8 withdrawal, or S8's signature being routed into S3's
+`preparedTx`.
+
+**Trace (both directions):**
+- **S3 → S8?** S3's outputs are: the broadcast tx `result.hash` (returned to the 402 retry,
+  `index.ts:61-71`) and `setPaymentSignature(sig)` which only adds an `X-Payment` header to
+  subsequent requests (`PhantomApiClient.ts:153,169-171`). Neither value is read by `PerpsClient`:
+  the perps signing struct is built solely from `quote.authorizeStep`/`depositStep`
+  (`PerpsClient.ts:352-385`) and the EVM `signTypedData` callback (`utils/perps.ts:42-48`). The
+  `X-Payment` header does not change what `getBridgeInitialize` returns in any source-visible way;
+  and even if it did, the backend already authors that quote under M2. No S3 output crosses into
+  S8's signed bytes.
+- **S8 → S3?** S8's output is the EIP-712 signature posted to `/swap/v2/spot/authorize` and
+  `/swap/v2/exchange` (`PerpsClient.ts:364-391`, `api.ts:195-207`). The S3 handler reads only
+  `payment.preparedTx` from the 402 body (`index.ts:60`); it never reads any perps signature. No
+  S8 output crosses into S3's signed bytes.
+- **Disjoint sinks:** S3 broadcasts a **Solana** tx via `signAndSendTransaction`
+  (`index.ts:61-66`, `NetworkId.SOLANA_MAINNET`); S8 produces an **EVM/EIP-712** signature via
+  `ethereumSignTypedData` (`utils/perps.ts:43-47`). Different chains, different KMS methods,
+  different endpoints.
+
+**Decisive rejection reason:** the composition has no internal edge. Each finding's escalation
+(Solana drain for S3; off-platform EVM redemption for S8) is fully realized by that finding alone
+under M2. The "combined" attack is strictly the union of two independent backend capabilities,
+which does not raise demonstrated impact above the strongest single part. The strongest single M2
+part is S8 (a KMS signature over an attacker-chosen `verifyingContract`, redeemable off the
+Phantom platform via ERC-2612/Permit2/Seaport — a lever the backend lacks because it holds no
+KMS key); S3 is a same-platform blind Solana broadcast. Neither makes the other stronger.
+
+**Verdict: REJECT.** There is no shared value, no shared sink, and no ordering dependency between
+S3 and S8. The composition does not raise demonstrated impact above the strongest isolated part.

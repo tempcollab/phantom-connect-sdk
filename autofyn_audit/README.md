@@ -1,9 +1,11 @@
 # Phantom Connect SDK — Security Audit
 
 **Target:** Phantom Connect SDK monorepo  
-**Audit commit:** `872944c9f26f4eef21b1d4a9f795ffea627719b7`  
+**Audit commit:** `33efbe59a34a0de25d1bd38f3e91758a802a3f5f`  
 **Docker image:** `node@sha256:8530f76a96d88820d288761f022e318970dda93d01536919fbc16076b7983e63`  
-**Scope:** 8 live-confirmed findings (S1–S8). All confirmed against a live instance via `run_exploits.sh` (exit 0).
+**Scope:** 8 live-confirmed findings (S1–S8) + 1 exploit chain (CHAIN-A/C1). All confirmed against a live instance via `run_exploits.sh` (exit 0).
+
+> **Reproducibility:** The pinned commit above is the reproducibility-verified baseline containing the complete deliverable (all PoCs S1–S8 + CHAIN-A). Clone this branch (or checkout the pinned commit) and run `autofyn_audit/setup.sh`; because the SDK source is never modified by this audit, every commit on this branch carries the identical SDK under test.
 
 ---
 

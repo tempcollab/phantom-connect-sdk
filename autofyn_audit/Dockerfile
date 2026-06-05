@@ -2,7 +2,7 @@
 #
 # Base image pinned by digest for reproducibility.
 # Runtime: node v24.x, yarn 4.2.2 via corepack.
-# Git commit pinned at audit time: 872944c9f26f4eef21b1d4a9f795ffea627719b7
+# Git commit pinned at audit time: 33efbe59a34a0de25d1bd38f3e91758a802a3f5f
 
 FROM node@sha256:8530f76a96d88820d288761f022e318970dda93d01536919fbc16076b7983e63
 

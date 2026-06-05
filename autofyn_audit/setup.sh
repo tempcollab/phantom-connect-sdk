@@ -10,7 +10,7 @@
 #
 # Pinned:
 #   Docker image:  node@sha256:8530f76a96d88820d288761f022e318970dda93d01536919fbc16076b7983e63
-#   Git commit:    872944c9f26f4eef21b1d4a9f795ffea627719b7
+#   Git commit:    33efbe59a34a0de25d1bd38f3e91758a802a3f5f
 #
 # PoC mode: runs on the HOST node (v24.x) using yarn workspace deps.
 # The Docker image is pulled and verified for reproducibility, but the PoCs
@@ -30,7 +30,7 @@ set -euo pipefail
 
 PINNED_IMAGE_DIGEST="sha256:8530f76a96d88820d288761f022e318970dda93d01536919fbc16076b7983e63"
 PINNED_IMAGE_REF="node@${PINNED_IMAGE_DIGEST}"
-PINNED_COMMIT="872944c9f26f4eef21b1d4a9f795ffea627719b7"
+PINNED_COMMIT="33efbe59a34a0de25d1bd38f3e91758a802a3f5f"
 
 # ── Locate repo root dynamically ──────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
