@@ -1195,7 +1195,7 @@ This section documents end-to-end exploit chains composed from the independently
 S1–S8 findings. Chains escalate demonstrated impact above the sum of isolated parts; each
 chain must stay within a single attacker model and be live-confirmable.
 
-One chain holds (CHAIN-A). Two candidate chains were evaluated and rejected (CHAIN-B, CHAIN-C)
+One chain holds (CHAIN-A). Four candidate chains were evaluated and rejected (CHAIN-B, CHAIN-C, CHAIN-D, CHAIN-E)
 — those rejections are documented below as a credibility asset; accurate rejection demonstrates
 that we declined chains that do not hold in source, rather than overstating.
 
@@ -1290,3 +1290,34 @@ identity via the CSRF-resume bypass → browser session takeover.
 - **S2's prediction half was never live-confirmed.** The report explicitly disclaims recovering xorshift128+ state from the truncated base-36 IDs an outside observer can see. Chaining onto a non-confirmed primitive yields a non-confirmed chain.
 
 **Verdict: REJECT.** The link is incoherent (S4 requires no predicted value; S2 only matters on the sound provider where there is no bypass), and the prediction step is non-live-confirmable.
+
+---
+
+### CHAIN-D — transfer_tokens rpcUrl reads → signed tx — VERDICT: COLLAPSES (do NOT build)
+
+**Hypothesis:** S1's Solana rpcUrl SSRF feeds attacker-controlled values (beyond CHAIN-A's `getMint` decimals) — specifically `recentBlockhash`, ATA existence, and `mintInfo.decimals` — into the SIGNED + BROADCAST `transfer_tokens` transaction, raising impact above what S1 and S6 achieve in isolation.
+
+**Source evidence it does not hold:**
+- **Recipient is never RPC-derived.** `toPubkey = new PublicKey(params.to)` (`transfer-tokens.ts:282`). The signed message commits to `params.to` — a direct MCP caller parameter. No RPC-returned value ever touches the recipient address.
+- **`mintInfo.decimals` is self-defeating via TransferChecked.** `getMint` (`transfer-tokens.ts:323-324`) feeds `parseUiAmount(amount, decimals)` then `createTransferCheckedInstruction(..., amountBaseUnits, decimals)` (`transfer-tokens.ts:339-348`). SPL's `TransferChecked` passes `decimals` to the on-chain Token program, which **rejects the transaction if `decimals` does not equal the mint's real on-chain value**. A faked decimals therefore defeats itself. (The unchecked `createTransferInstruction` branch at `:337` is only taken when `amountUnit==="base"` or `decimals===undefined` — it does not consume the fetched value and is not reachable from the attacker's RPC.)
+- **`recentBlockhash` does not redirect funds.** `getLatestBlockhash` at `transfer-tokens.ts:352` → `tx.recentBlockhash` at `:354` flows into the serialized signed bytes (`:356`). An attacker-controlled value here changes only liveness (a stale or invalid blockhash makes the tx fail to land — DoS at most); it cannot change recipient or amount. A valid blockhash just lets the caller-authorized tx land.
+- **ATA existence — bounded griefing only.** `getAccountInfo(destinationAta)` (`transfer-tokens.ts:311`): attacker RPC can claim the ATA is missing, which adds `createAssociatedTokenAccountInstruction` (`:314`), billing ~0.002 SOL rent from the sender. The recipient is still `params.to` — a direct caller parameter.
+- **Caller already controls every value that matters.** `params.to`, `amount`, `amountUnit`, and the confirm-gate bypass (`confirmed:true`, `:81-87/:359`) are all direct MCP parameters of the same caller. The rpcUrl SSRF grants nothing the caller does not already hold. There is no value that crosses from "caller cannot control" to "caller can control" — the defining requirement for a meaningful chain (finding A's output becomes a NEW capability for finding B) is absent.
+- **EVM transfer path is not S1-reachable.** `resolveEvmRpcUrl` runs `validateRpcUrl` (`transfer-tokens.ts:164`, `rpc.ts:51-76,103-107`), which blocks private IPs. The RPC-fed values on the EVM path (`estimateGas`/`fetchGasPrice`/`fetchNonce` at `:236-240`) cannot be pointed at loopback or IMDS.
+
+**Verdict: REJECT.** This is S1+S6 restated on a different tool (`transfer_tokens` vs `buy_token`), not an escalation. Every RPC-influenced value flows only into amount-scalar, blockhash, or ATA-rent — never into recipient, signing key, or signing domain. No privilege crosses a trust boundary.
+
+---
+
+### CHAIN-E — S5 (primaryType-in-types gap) → sign_evm_typed_data — VERDICT: COLLAPSES (do NOT build)
+
+**Hypothesis:** S5's missing `primaryType ∈ types` membership check in `validateEip712TypedData` (`parsers/src/index.ts:43-65`), reachable via the `sign_evm_typed_data` MCP tool, chains into a signing sink to produce a display-vs-signed divergence or signature-confusion exploit.
+
+**Source evidence it does not hold:**
+- **The MCP caller authors every byte.** `sign-evm-typed-data.ts:20-34` accepts `typedData` as a structured MCP param. The caller supplies `domain` (including `verifyingContract`), `types`, `primaryType`, and `message` directly. There is no server-supplied struct being re-derived or displayed differently.
+- **No display/derivation layer exists.** After `validateEip712TypedData(params.typedData)` (`:69`) and a `chainId`-consistency check (`:72-87`), `typedData` is passed VERBATIM to `client.ethereumSignTypedData({ walletId, typedData, networkId, ... })` (`:94-99`). `PhantomClient.ethereumSignTypedData` (`PhantomClient.ts:677-722`) forwards `typedData` unmodified into the KMS RPC request (`:702-713`). There is no canonicalization, re-derivation, or display step from which a divergence could arise.
+- **S5's missing check changes nothing the attacker can do.** With or without the `primaryType ∈ types` check, the attacker controls the full struct. The check cannot confuse a displayed type into a different signed type because the same caller supplies both — there is only one version of the data. S5 is a client-side validation gap; it becomes relevant if a downstream display layer re-derived the signing struct from `primaryType`, but no such layer exists here.
+- **The KMS signing sink is opaque and non-live-confirmable.** The KMS (PhantomClient.ts:702-713) is a remote service not reachable in the PoC environment. Per the chain rules, a critical link that is non-live-confirmable must not be presented as a confirmed chain hinge.
+- **The "attacker-chosen `verifyingContract`" capability is already S8.** The standalone observation that a legitimate `sign_evm_typed_data` caller can sign any EIP-712 struct they construct is the isolated S5/tool behavior; it does not require combining two findings and does not escalate above S5's existing LOW severity. The off-platform-redeemable EIP-712 signature under the backend-compromise model is already captured by S8 (PerpsClient `authorizeStep`, `PerpsClient.ts:356-361`) — a distinct finding in a distinct package under a distinct attacker model (M2, not M1).
+
+**Verdict: REJECT.** S5's missing membership check induces no display-vs-signed divergence because there is no display or re-derivation step to confuse. The MCP caller is the sole author of all typedData fields and the KMS signs exactly what was supplied. This is the isolated S5 behavior, not an escalation produced by combining findings.
