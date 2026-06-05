@@ -56,7 +56,7 @@ bash autofyn_audit/teardown.sh
 
 **Exploit chain CHAIN-A (C1) confirmed:** S1+S6 chain produces silent magnitude distortion of
 an intended swap under a single M1 (prompt-injected MCP) tool call — no backend compromise.
-See Exploit Chains section in `audit_report.md` for the chain analysis and CHAIN-B/CHAIN-C rejections.
+See Exploit Chains section in `audit_report.md` for the CHAIN-A analysis and the CHAIN-B…CHAIN-H rejections (7 candidate chains rejected with source evidence).
 
 No CRITICAL findings confirmed. Severities are deliberately conservative (accuracy > quantity).
 See `audit_report.md` for full per-finding writeups (attacker/trust boundary, reachable code

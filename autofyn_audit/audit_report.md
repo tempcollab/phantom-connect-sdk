@@ -20,7 +20,7 @@
 |----|-------|--------|----------|
 | **S1** | Inconsistent Solana RPC SSRF — `resolveSolanaRpcUrl` skips private-IP block | **Confirmed by PoC** | MEDIUM |
 | **S2** | Insecure randomness (CWE-330/338) for OAuth state / session id — weak CSRF-token entropy | **Confirmed by PoC** | LOW |
-| **S3** | Auto-402 payment handler signs without the whitelist `pay_api_access` enforces — blind-signing asymmetry | **Confirmed by PoC** (live: real auto-handler blind-signs unvalidated drain tx; whitelist asymmetry shown by source-citation + labeled reference reproduction) | MEDIUM |
+| **S3** | Auto-402 payment handler signs without the whitelist `pay_api_access` enforces — blind-signing asymmetry | **Confirmed by PoC** (live: real `PhantomApiClient` forwards the unvalidated 402 `preparedTx` to the registered handler — handler body is a labeled verbatim transcription of `index.ts:60-66` — and the SystemProgram drain tx reaches the signer unchecked; whitelist asymmetry shown by source-citation + labeled reference reproduction) | MEDIUM |
 | **S4** | `BrowserAuthProvider.resumeAuthFromRedirect` conditional CSRF bypass (legacy non-default class) | **Confirmed by PoC** | MEDIUM |
 | **S5** | `validateEip712TypedData` missing `primaryType`-in-`types` membership check | **Confirmed by PoC** | LOW |
 | **S6** | MCP financial-action confirmation-gate asymmetry (`buy_token`/perps vs `transfer_tokens`/`send_solana_transaction`) | **Confirmed by PoC** | MEDIUM |
@@ -466,16 +466,16 @@ stubbed session/address lookup — the PoC must not require real keys (per audit
 
 #### Confirmation / Evidence
 
-Verbatim stdout from the S3 PoC (live run, 2026-06-04, `bash autofyn_audit/run_exploits.sh`):
+Verbatim stdout from the S3 PoC (live run, 2026-06-05, `bash autofyn_audit/run_exploits.sh`):
 
 ```
 ── Step 2: Loopback HTTP 402 server + PhantomApiClient + stub signer ───────
-  Loopback 402 server listening on http://127.0.0.1:41563
+  Loopback 402 server listening on http://127.0.0.1:36437
 
 ── Step 3: Live assertions (real PhantomApiClient + auto-handler) ───────────
   (a) [LIVE] Loopback server received ≥1 request from PhantomApiClient: PASS (count=2)
-      GET /v1/anything at 2026-06-04T20:40:24.267Z
-  (b) [LIVE] Auto-handler decoded preparedTx and forwarded to signer (no validation): PASS
+      GET /v1/anything at 2026-06-05T14:55:19.674Z
+  (b) [LIVE] real PhantomApiClient forwarded unvalidated preparedTx to registered handler (handler body = verbatim transcription of index.ts:60-66): PASS
   (c) [LIVE] SystemProgram.transfer instruction reached stub signer unchecked: PASS
       programId: 11111111111111111111111111111111 — auto-handler accepted this without any validation
 
@@ -488,11 +488,11 @@ Verbatim stdout from the S3 PoC (live run, 2026-06-04, `bash autofyn_audit/run_e
 
 === S3: Auto-402 Blind-Signing Asymmetry ===
   (a) [LIVE]  402 server received request from PhantomApiClient: CONFIRMED
-  (b) [LIVE]  Auto-handler reached decode+sign step, no validation: CONFIRMED
+  (b) [LIVE]  real PhantomApiClient forwarded unvalidated preparedTx to handler (body = transcription of index.ts:60-66): CONFIRMED
   (c) [LIVE]  SystemProgram drain tx reached stub signer unchecked: CONFIRMED
   (ref)       Reproduced schema rejects same tx (reference contrast only): YES
   Overall:                                                          CONFIRMED
-  Pass condition: (a)+(b)+(c) only — real auto-handler blindly signed drain tx
+  Pass condition: (a)+(b)+(c) only — real PhantomApiClient forwarded the unvalidated 402 preparedTx to the registered handler; drain tx reached signer unchecked (handler body = labeled transcription of index.ts:60-66)
 ```
 
 The CONFIRMED verdict rests SOLELY on the live (a)+(b)+(c) assertions against the real
@@ -871,7 +871,7 @@ cross-domain 3xx redirect, or a TLS MitM. Same class as S3. NOT CRITICAL.)*
 
 **Affected package:** `packages/auth2/node_modules/follow-redirects@1.15.11` (VULNERABLE)  
 **Affected file (headers):** `packages/auth2/src/Auth2KmsRpcClient.ts:38-62`  
-**Vulnerable strip logic:** `packages/auth2/node_modules/follow-redirects/index.js:471-476`  
+**Vulnerable strip logic:** `packages/auth2/node_modules/follow-redirects/index.js:469-477`  
 **Contrast (patched):** `packages/cli/node_modules/follow-redirects@1.16.0`
 
 #### Attacker and Trust Boundary
@@ -888,7 +888,7 @@ PoC code with S3. Independent finding.
 `@phantom/auth2` uses axios (→ follow-redirects via the Node http adapter) to call the KMS API.
 The `auth2` package's own `node_modules` tree pins `follow-redirects@1.15.11`, vulnerable to
 CVE-2026-40895: on a cross-domain 3xx redirect the library strips only `authorization`,
-`proxy-authorization`, and `cookie` (`index.js:471-476`) — it does NOT strip custom headers.
+`proxy-authorization`, and `cookie` (`index.js:469-477`) — it does NOT strip custom headers.
 The signing credential `x-phantom-stamp` and OIDC subject identifier `x-auth-user-id` that
 `Auth2KmsRpcClient` adds to every request (`Auth2KmsRpcClient.ts:44-56`) are forwarded verbatim
 to the redirect destination. The `packages/cli` tree uses the patched `1.16.0` (strips additional
@@ -1379,7 +1379,7 @@ failure mode the chain rule forbids (cf. CHAIN-B). **REJECT.**
 model); third-party cross-domain redirect target (S7 model). These are distinct attacker positions.
 
 **Hypothesis:** S7 leaks `x-phantom-stamp` + `x-auth-user-id` on a cross-domain redirect
-(`packages/auth2/node_modules/follow-redirects@1.15.11`, strip regex `index.js:471-476` drops
+(`packages/auth2/node_modules/follow-redirects@1.15.11`, strip regex `index.js:469-477` drops
 only `authorization`/`proxy-authorization`/`cookie`; `Auth2KmsRpcClient.ts:44-56` sets the
 leaking headers). The leaked credential then authorizes or replays the blind-signed withdrawal of
 S8 (or the S3 payment), composing credential exfil + blind-sign into off-platform fund redemption.
