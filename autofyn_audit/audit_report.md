@@ -411,12 +411,11 @@ autofyn_audit/
 ├── setup.sh / run_exploits.sh / teardown.sh
 ├── lib/
 │   └── capture-server.mjs
-├── docs/                            (CVE advisory markdown — Medium live-confirmed findings)
-│   ├── CVE-PHANTOM-001.md
-│   ├── CVE-PHANTOM-002.md
-│   ├── CVE-PHANTOM-003.md
-│   ├── CVE-PHANTOM-004.md
-│   └── CVE-PHANTOM-005.md
+├── docs/                            (advisories + hardening notes)
+│   ├── CVE-PHANTOM-001.md           (advisory — Solana RPC SSRF)
+│   ├── CVE-PHANTOM-002.md           (advisory — auto-402 blind-signing)
+│   ├── CVE-PHANTOM-003.md           (advisory — backend-controlled EIP-712 domain)
+│   └── HARDENING-NOTES.md           (PHANTOM-004 + PHANTOM-005 — documented, not filed as advisories)
 └── exploits/
     ├── s1-solana-rpc-ssrf/run.mjs
     ├── s2-weak-oauth-state-prng/run.mjs
